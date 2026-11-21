@@ -34,7 +34,8 @@
       "Frame rate changes made in the in-game Settings screen are saved to the launcher.",
       "Split-screen co-op, in Colosseum and XD: new settings under Gameplay choose who player 2 walks as, whether the screen splits side by side or one above the other, and whether the keyboard stays player 1 so a lone controller can be player 2. Co-op is on unless you turn it off.",
       "Play the story together online: the Online page now separates Co-op Story, Battles and Replays into their own tabs. Host your save from Co-op Story or open your active singleplayer save right from the in-game Settings menu (START → Settings → Co-op) to get a co-op code, or check Show in public lobby so anyone on the same game and version can join from Open co-op rooms. No port forwarding needed.",
-      "Jukebox: songs start much sooner. A long song starts playing from its first seconds while the rest of it is made, and carries on seamlessly. Colosseum songs are also made in about half the time, and a song you pick is no longer kept waiting while the next song is being made ahead of time."
+      "Jukebox: songs start much sooner. A long song starts playing from its first seconds while the rest of it is made, and carries on seamlessly. Colosseum songs are also made in about half the time, and a song you pick is no longer kept waiting while the next song is being made ahead of time.",
+      "Jukebox: in Pokémon Colosseum, the dancers now keep to each song's own beat, taken from the song's music data and not guessed from its sound. They stay on the beat in songs they used to dance too fast, too slow or half a beat off in, and keep it through a song's changes of tempo."
     ],
     "game": [
       "120 fps in Colosseum and XD: characters, the camera and fades move twice as smoothly, menu text stays steady, Snag Balls play out in full, and the game keeps its normal speed.",
