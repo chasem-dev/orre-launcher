@@ -79,13 +79,14 @@ const commandError = result => COMMAND_ERRORS[result.code] || `The game couldn't
 
 class OnlineTrades extends EventEmitter {
   // url: the trade server; accessFor(game): the save as shadowtrade.js reaches it (cardAccess / liveAccess);
-  // receiverFor(game): what that game takes (trade-convert.js problems: laterPokemon, laterMoves, laterItems)
+  // receiverFor(game): what that game takes (trade-convert.js problems: laterPokemon, laterMoves, laterItems);
+  // unavailable(game): why that save can't be reached now (null: there is none yet)
   constructor({ folder, url, fetch = globalThis.fetch, WebSocket = globalThis.WebSocket, log = () => {}, onChange = () => {},
-    accessFor = () => null, receiverFor = game => ({ game }), name = () => 'Trainer', launcher = '', arrivals = null }) {
+    accessFor = () => null, receiverFor = game => ({ game }), name = () => 'Trainer', launcher = '', arrivals = null, unavailable = () => null }) {
     super();
     // arrivals: arrivals.js, which has the running game show each Pokémon that came, and do its trade evolution (null:
     // the evolution is this journal's, and nothing is shown)
-    Object.assign(this, { folder, url, fetch, WebSocket, log, onChange, accessFor, receiverFor, name, launcherVersion: launcher, arrivals });
+    Object.assign(this, { folder, url, fetch, WebSocket, log, onChange, accessFor, receiverFor, name, launcherVersion: launcher, arrivals, unavailable });
     this.file = path.join(folder, 'state.json');
     this.state = this.load();
     this.session = null;     // the room this player is in now
@@ -157,7 +158,7 @@ class OnlineTrades extends EventEmitter {
 
   async open(game, code = null) {
     if (this.session) this.leave();
-    if (!this.accessFor(game)) throw new Error('There is no save to trade from yet.');
+    if (!this.accessFor(game)) throw new Error(this.unavailable(game) || 'There is no save to trade from yet.');
     const session = new TradeSession({ url: this.url, WebSocket: this.WebSocket, hello: { name: this.name(game), game, launcher: this.launcherVersion } });
     this.session = session;
     this.room = { game, role: code ? 'joiner' : 'host', code: null };

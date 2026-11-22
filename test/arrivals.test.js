@@ -81,3 +81,90 @@ test('a game without arrive still gets its trade evolution', async () => {
   assert.deepEqual(evolved, [1]);
   assert.deepEqual(done, [65, 0]);
 });
+
+// A running game for put-back tests: arrive says missing until the Pokémon is given back, then shows it
+function liveGame({ trainerId = 7, full = false, missingAlways = false } = {}) {
+  const given = [], shown = [];
+  let has = false;
+  return {
+    given, shown,
+    access: {
+      mode: 'live',
+      read: () => ({ model: { trainerId } }),
+      arrive: async identity => {
+        if (!has || missingAlways) return { ok: false, code: 'missing' };
+        shown.push(identity.species);
+        return { ok: true, area: 'party', box: 0, slot: 4, evolved: 0 };
+      },
+      tradeGive: async data => { if (full) return { ok: false, code: 'full' }; given.push(data.length); has = true; return { ok: true, area: 'party', box: 0, slot: 4 }; },
+      give: async (data, record) => { given.push(['shadow', data.length, record]); has = true; return { ok: true, area: 'box', box: 2, slot: 1 }; }
+    }
+  };
+}
+const DRATINI = { species: 147, rnd: 2696475849, trainer: 3212344978 };
+const dratiniData = Buffer.alloc(0x138, 1).toString('base64');
+
+test('a Pokémon the game says is missing is put back in its save, then shown, and never dropped', async () => {
+  const dir = folder(), done = [], restored = [], lines = [];
+  const arrivals = new Arrivals({ folder: dir, trainerOf: () => 7, log: line => lines.push(line), onRestored: entry => restored.push(entry.from),
+    onDone: (entry, result) => done.push([entry.from, result.ok]) });
+  arrivals.add({ game: 'colosseum', kind: 'trade', from: 'Moon', data: dratiniData, identity: DRATINI, place: { area: 'party', box: 0, slot: 4 }, tradeId: 't' });
+  assert.equal(arrivals.pending()[0].saveTrainer, 7, 'the save it went to is kept with it');
+  const game = liveGame();
+  await arrivals.deliver('colosseum', game.access);
+  assert.deepEqual(game.given, [0x138], 'its bytes went back into the save');
+  assert.deepEqual(game.shown, [147]);
+  assert.deepEqual(restored, ['Moon']);
+  assert.deepEqual(done, [['Moon', true]]);
+  assert.ok(lines.some(line => /was saved over\), so the launcher put it back/.test(line)));
+  assert.equal(arrivals.pending().length, 0);
+});
+
+test('a missing Pokémon waits for its own save: another trainer\'s, or one not known, never gets it', async () => {
+  const dir = folder(), done = [];
+  const arrivals = new Arrivals({ folder: dir, trainerOf: () => 7, onDone: entry => done.push(entry.from) });
+  arrivals.add({ game: 'colosseum', kind: 'trade', from: 'Moon', data: dratiniData, identity: DRATINI, tradeId: 't' });
+  const other = liveGame({ trainerId: 99 });
+  await arrivals.deliver('colosseum', other.access);
+  assert.deepEqual(other.given, [], 'a save of another trainer id gets nothing');
+  assert.equal(arrivals.pending().length, 1);
+  // made before the launcher kept the save's trainer id: kept, not put back anywhere
+  const unknown = new Arrivals({ folder: folder(), trainerOf: () => null, onDone: entry => done.push(entry.from) });
+  unknown.add({ game: 'colosseum', kind: 'trade', from: 'Abe', data: dratiniData, identity: DRATINI, tradeId: 'u' });
+  const game = liveGame();
+  await unknown.deliver('colosseum', game.access);
+  assert.deepEqual(game.given, []);
+  assert.equal(unknown.pending().length, 1, 'kept, with its data');
+  assert.ok(unknown.state.waiting[0].data);
+  assert.deepEqual(done, []);
+});
+
+test('a missing Pokémon that can\'t go back now stays, and one that keeps going is put back only so often', async () => {
+  const dir = folder(), lines = [];
+  const arrivals = new Arrivals({ folder: dir, trainerOf: () => 7, log: line => lines.push(line) });
+  arrivals.add({ game: 'colosseum', kind: 'trade', from: 'Moon', data: dratiniData, identity: DRATINI, tradeId: 't' });
+  await arrivals.deliver('colosseum', liveGame({ full: true }).access);
+  assert.equal(arrivals.pending().length, 1, 'no room: it waits');
+  assert.ok(lines.some(line => /party and PC boxes are full/.test(line)));
+  const keeps = liveGame({ missingAlways: true });
+  for (let i = 0; i < 5; i++) await arrivals.deliver('colosseum', keeps.access);
+  assert.equal(keeps.given.length, 3, 'put back three times at most');
+  assert.equal(arrivals.pending().length, 1, 'and still kept');
+  assert.ok(lines.some(line => /put back 3 times/.test(line)));
+  // an XD Shadow Pokémon needs Shadowtrade's own giving: kept for a person
+  const xd = new Arrivals({ folder: folder(), trainerOf: () => 7 });
+  xd.add({ game: 'xd', kind: 'shadowtrade', from: 'Bea', data: Buffer.alloc(0xc4).toString('base64'), identity: { species: 300, rnd: 1, trainer: 2 }, tradeId: 'x' });
+  const xdGame = liveGame();
+  await xd.deliver('xd', xdGame.access);
+  assert.deepEqual(xdGame.given, []);
+  assert.equal(xd.pending().length, 1);
+});
+
+test('a Colosseum Shadow Pokémon from Shadowtrade goes back as Shadowtrade gives one', async () => {
+  const arrivals = new Arrivals({ folder: folder(), trainerOf: () => 7 });
+  arrivals.add({ game: 'colosseum', kind: 'shadowtrade', from: 'Bea', data: dratiniData, identity: DRATINI, tradeId: 's' });
+  const game = liveGame();
+  await arrivals.deliver('colosseum', game.access);
+  assert.deepEqual(game.given, [['shadow', 0x138, null]]);
+  assert.equal(arrivals.pending().length, 0);
+});

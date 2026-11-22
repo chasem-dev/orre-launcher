@@ -72,17 +72,37 @@ function pokemon(data) {
   return { species, level: data[0x54], nickname: text(data.subarray(8, 18)), language: data[0x12], otId };
 }
 
-// What the save is, or an error: { game, trainer, party, ... } or throws with a reason for players.
-function parse(buffer) {
+// The newer whole copy of the save: its trainer (SaveBlock2), its SaveBlock1 (the party) and its PC (PokemonStorage:
+// the current box, 14 boxes of 30 80-byte Pokémon, their names), and which game it is. Throws with a reason for players.
+function blocks(buffer) {
   if (buffer.length < SAVE_SIZE) throw new Error("This isn't a Pokémon Ruby, Sapphire, Emerald, FireRed or LeafGreen save: it's too small.");
   const slots = [slotSections(buffer, 0), slotSections(buffer, 1)].map((s, slot) => s && { ...s, slot });
   const live = slots.filter(Boolean).sort((a, b) => b.counter - a.counter)[0];
   if (!live) throw new Error("This isn't a Pokémon Ruby, Sapphire, Emerald, FireRed or LeafGreen save, or it's damaged.");
   const sb2 = buffer.subarray(live.at[0], live.at[0] + 0xF80);
   const sb1 = Buffer.concat([1, 2, 3, 4].map(id => buffer.subarray(live.at[id], live.at[id] + 0xF80)));
+  const storage = Buffer.concat([5, 6, 7, 8, 9, 10, 11, 12, 13].map(id => buffer.subarray(live.at[id], live.at[id] + SECTION_SIZES[id])));
   const code = sb2.readUInt32LE(0xAC);
   const gameId = code === 0 ? 'rs' : code === 1 ? 'frlg' : 'e';
-  const game = GAMES[gameId];
+  return { live, sb1, sb2, storage, gameId, game: GAMES[gameId] };
+}
+
+// The PC's boxes: { name, pokemon: [80-byte Pokémon or null] } for each of the 14
+const BOXES = 14, PER_BOX = 30, BOX_MON = 80;
+function boxes(storage) {
+  const names = 4 + BOXES * PER_BOX * BOX_MON;
+  return Array.from({ length: BOXES }, (_, b) => ({
+    name: text(storage.subarray(names + b * 9, names + b * 9 + 9)),
+    pokemon: Array.from({ length: PER_BOX }, (_, i) => {
+      const at = 4 + (b * PER_BOX + i) * BOX_MON, data = storage.subarray(at, at + BOX_MON);
+      return data.readUInt32LE(0) || data.readUInt32LE(4) ? data : null;
+    })
+  }));
+}
+
+// What the save is, or an error: { game, trainer, party, ... } or throws with a reason for players.
+function parse(buffer) {
+  const { live, sb1, sb2, gameId, game } = blocks(buffer);
   const partyCount = Math.min(6, sb1[game.partyCount]);
   const party = [];
   for (let i = 0; i < partyCount; i++) {
@@ -174,4 +194,4 @@ function findSaves(folders, { depth = 3, limit = 4000 } = {}) {
   return found.sort((a, b) => b.modified - a.modified);
 }
 
-module.exports = { SAVE_SIZE, parse, read, pokemon, linkProblem, searchFolders, findSaves, text };
+module.exports = { SAVE_SIZE, GAMES, ORDERS, parse, read, blocks, boxes, pokemon, linkProblem, searchFolders, findSaves, text };

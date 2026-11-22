@@ -134,18 +134,27 @@ function renderPresets() {
 }
 
 // A row for each region the hero's textures have: its colour, and a button back to the disc's.
+// (Lips and eyeshadow follow the skin until they're given a colour: their swatches show the colour they follow.)
 function renderRegions() {
-  const hero = colors.hero(shown.id), chosen = heroColors();
+  const hero = colors.hero(shown.id), chosen = heroColors(), shownColors = colors.effectiveColors(shown.id, shown.refs, chosen);
+  const followers = () => {
+    const now = colors.effectiveColors(shown.id, shown.refs, heroColors());
+    for (const region of hero.regions) if (region.follows && now[region.id]) {
+      const swatch = $(`customize-color-${region.id}`);
+      if (swatch) swatch.value = now[region.id];
+    }
+  };
   $('customize-regions').replaceChildren(...hero.regions.flatMap((region, i) => {
     const ref = shown.refs[i];
     if (!ref) return [];
     const row = document.createElement('div');
     row.className = 'customize-region';
-    const input = Object.assign(document.createElement('input'), { type: 'color', value: chosen[region.id] || ref.color, id: `customize-color-${region.id}` });
+    const input = Object.assign(document.createElement('input'), { type: 'color', value: shownColors[region.id] || ref.color, id: `customize-color-${region.id}` });
     input.setAttribute('aria-label', `${region.label} colour`);
     input.addEventListener('input', () => {
       looks.colors[shown.id] = { ...heroColors(), [region.id]: input.value };
       reset.hidden = false;
+      followers();
       paint();
       save();
     });

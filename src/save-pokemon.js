@@ -29,7 +29,7 @@ const COLOSSEUM = {
   file: 'pokemon_colosseum.dat', size: 0x138, trainerName: 0x78, trainerId: 0xa4, party: 0xa8, boxes: 0xb90, boxSize: 0x24a4,
   retailBoxes: 3, extraBoxes: 7, boxName: 0x14, perBox: 30,
   at: { species: 0x00, rnd: 0x04, ball: 0x0f, trainer: 0x14, nickname: 0x2e, level: 0x60, moves: 0x78, item: 0x88, hp: 0x8a,
-    maxHp: 0x8c, egg: 0xcb, shadow: 0xd8, heart: 0xdc }
+    maxHp: 0x8c, friendship: 0xb0, egg: 0xcb, shadow: 0xd8, heart: 0xdc }
 };
 // The day care's Pokémon (save kind 11, proven against the game in a run).
 const COLOSSEUM_DAYCARE_POKEMON = 0x8178;
@@ -40,7 +40,7 @@ const COLOSSEUM_STORY_IDS = [...Array.from({ length: 44 }, (_, i) => i + 1), 0x3
 const XD = {
   file: 'PokemonXD.dat', size: 0xc4, boxes: 8, boxSize: 0x170c, boxName: 0x14, perBox: 30, partyAt: 0x30, heroId: 0x2c,
   meetCount: 0x938, recordSize: 0x48, records: 128,
-  at: { species: 0x00, item: 0x02, hp: 0x04, ball: 0x0f, level: 0x11, flags: 0x1d, trainer: 0x24, rnd: 0x28, nickname: 0x4e,
+  at: { species: 0x00, item: 0x02, hp: 0x04, friendship: 0x06, ball: 0x0f, level: 0x11, flags: 0x1d, trainer: 0x24, rnd: 0x28, nickname: 0x4e,
     moves: 0x80, maxHp: 0x90, shadow: 0xba },
   // where each section is in the game's memory (the live picture), as the pack's table gives it for a card copy
   ram: { hero: 0x140, pcBox: 0xad0, dayCare: 0xc790, darkPokemon: 0xe380, chamber: 0x1d690 }
@@ -79,7 +79,7 @@ function colosseumPokemon(bytes, extra = {}) {
   return {
     species, rnd, trainer, key: keyOf(species, rnd, trainer),
     nickname: units(bytes, at.nickname), level: bytes[at.level], item: bytes.readUInt16BE(at.item),
-    hp: bytes.readUInt16BE(at.hp), maxHp: bytes.readUInt16BE(at.maxHp), ball: bytes[at.ball],
+    hp: bytes.readUInt16BE(at.hp), maxHp: bytes.readUInt16BE(at.maxHp), friendship: bytes.readUInt16BE(at.friendship), ball: bytes[at.ball],
     moves: Array.from({ length: 4 }, (_, i) => bytes.readUInt16BE(at.moves + i * 4)).filter(Boolean),
     egg: bytes[at.egg] !== 0, shiny: isShiny(trainer, rnd),
     shadowId, shadow: shadowId !== 0 && heart >= 0, heart: shadowId !== 0 && heart >= 0 ? heart : null, ...extra
@@ -151,7 +151,7 @@ function xdPokemon(ctx, bytes, extra = {}) {
   return {
     species, rnd, trainer, key: keyOf(species, rnd, trainer),
     nickname: units(bytes, at.nickname), level: bytes[at.level], item: bytes.readUInt16BE(at.item),
-    hp: bytes.readUInt16BE(at.hp), maxHp: bytes.readUInt16BE(at.maxHp), ball: bytes[at.ball],
+    hp: bytes.readUInt16BE(at.hp), maxHp: bytes.readUInt16BE(at.maxHp), friendship: bytes.readUInt16BE(at.friendship), ball: bytes[at.ball],
     moves: Array.from({ length: 4 }, (_, i) => bytes.readUInt16BE(at.moves + i * 4)).filter(Boolean),
     egg: Boolean(bytes[at.flags] & 0x80), shiny: isShiny(trainer, rnd),
     shadowId, shadow, heart: shadow ? record.readInt32BE(0x24) : null, ...extra

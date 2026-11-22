@@ -19,7 +19,7 @@ const { decodePng } = require('./pokemon-packs');
 const { png } = require('./pokedex');
 const { colosseumPkx } = require('./xd-disc');
 
-const VERSION = 1;          // of what bake makes: a new one makes every look again
+const VERSION = 3;          // of what bake makes: a new one makes every look again (2: the faces' blink frames, and regions sorted by where they're drawn; 3: small textures judged at the disc's size)
 const PKX_HEADER = 0x40;
 const RGBA8 = 6;
 const KEPT = 8;             // looks kept made, the newest
@@ -52,23 +52,27 @@ function encodeRgba8(rgba, width, height) {
   return out;
 }
 
-// A model (`dat`, an HSD archive) with each image (an HSD_ImageDesc's offset in its data: { image, data, width, height })
+// A model (`dat`, an HSD archive) with each image (an HSD_ImageDesc's offset in its data, and those of others with the
+// same texels: { image, also, data, width, height })
 // put after its data and pointed at as RGBA8 with no mipmaps. The pointers to them are where the disc's pointed, so the
 // relocation table stays as it is.
 function rebuildDat(dat, images) {
   const dataSize = dat.readUInt32BE(4), data = Buffer.from(dat.subarray(0x20, 0x20 + dataSize)), chunks = [data];
   let end = dataSize;
-  for (const { image, data: texels, width, height } of images) {
+  for (const { image, also = [], data: texels, width, height } of images) {
     const at = align32(end);
     chunks.push(Buffer.alloc(at - end), texels);
     end = at + texels.length;
-    data.writeUInt32BE(at, image);
-    data.writeUInt16BE(width, image + 4);
-    data.writeUInt16BE(height, image + 6);
-    data.writeUInt32BE(RGBA8, image + 8);
-    data.writeUInt32BE(0, image + 0x0c);
-    data.writeFloatBE(0, image + 0x10);
-    data.writeFloatBE(0, image + 0x14);
+    // every HSD_ImageDesc of the same texels (a texture animation's frames point at the face's) takes the new ones
+    for (const desc of [image, ...also]) {
+      data.writeUInt32BE(at, desc);
+      data.writeUInt16BE(width, desc + 4);
+      data.writeUInt16BE(height, desc + 6);
+      data.writeUInt32BE(RGBA8, desc + 8);
+      data.writeUInt32BE(0, desc + 0x0c);
+      data.writeFloatBE(0, desc + 0x10);
+      data.writeFloatBE(0, desc + 0x14);
+    }
   }
   const header = Buffer.from(dat.subarray(0, 0x20)), rest = dat.subarray(0x20 + dataSize);
   header.writeUInt32BE(0x20 + end + rest.length, 0);
@@ -98,14 +102,15 @@ function writeXdPkx(pkx, images) {
 // A look made from its hero's battle model (`pkx`, from the disc): { pkx, hd: [{ name, png }] }. `index` is
 // texture-pack-lookup.js's of the folders the game reads HD textures from, or null; `xd`, that the pkx is XD's.
 function bake(pkx, look, index = null, { xd = false } = {}) {
-  const heroId = look.hero, model = hsd.parseModel(xd ? colosseumPkx(pkx) : pkx), textures = model.textures;
+  // with the images its texture animations swap in, so the face keeps its colours as the hero blinks
+  const heroId = look.hero, model = hsd.parseModel(xd ? colosseumPkx(pkx) : pkx, { animated: true }), textures = model.textures;
   const base = colors.prepare(heroId, textures);
   // One image can be several textures (wrapped two ways): each is painted once
   const images = new Map();
   textures.forEach((texture, i) => { if (texture.disc && !images.has(texture.disc.image)) images.set(texture.disc.image, i); });
   const made = [...images].map(([image, i]) => {
     const { rgba, width, height } = textures[i];
-    return { image, i, width, height, data: encodeRgba8(colors.recolor(heroId, rgba, base.textures[i], base.refs, look.colors), width, height) };
+    return { image, also: textures[i].disc.also || [], i, width, height, data: encodeRgba8(colors.recolor(heroId, rgba, base.textures[i], base.refs, look.colors), width, height) };
   });
 
   // The HD pack's images of the same textures, sorted into regions together as the Customize page does
@@ -119,7 +124,7 @@ function bake(pkx, look, index = null, { xd = false } = {}) {
     } catch (_) { return null; }
   });
   if (found.some(Boolean)) {
-    const large = found.map((image, i) => image || textures[i]), sorted = colors.prepare(heroId, large);
+    const large = found.map((image, i) => image || textures[i]), sorted = colors.prepare(heroId, large, textures);
     for (const { i, data, width, height } of made) {
       if (!found[i]) continue;
       const { rgba, width: w, height: h } = found[i];
@@ -135,7 +140,7 @@ function bake(pkx, look, index = null, { xd = false } = {}) {
 // `pkx` is the hero's battle model from the disc; `index` as bake's.
 function makeLook(folder, look, pkx, index = null, { xd = false } = {}) {
   const images = [];
-  if (index) for (const texture of hsd.parseModel(xd ? colosseumPkx(pkx) : pkx).textures) {
+  if (index) for (const texture of hsd.parseModel(xd ? colosseumPkx(pkx) : pkx, { animated: true }).textures) {
     const found = texturePackLookup.findReplacement(index, texture.disc);
     if (!found) continue;
     try { const { size, mtimeMs } = fs.statSync(found.file); images.push([found.file, size, mtimeMs]); } catch (_) { /* not there after all */ }

@@ -10,7 +10,7 @@ const path = require('node:path');
 const FEATURES = ['online', 'generations', 'randomizer', 'widescreen', 'hdText', 'hdModels', 'hdTextures', 'languagePacks',
   'discordPresence', 'storyParty', 'pcBoxes', 'gbaLink', 'quickMoves', 'battleSpeed', 'fastForward', 'skipMovies', 'starters',
   'shiny', 'shinyStarters', 'pokemonPacks', 'pbrAssets', 'pokedex', 'jukebox', 'teamBuilder', 'gciSaves', 'tmNames', 'playAs', 'customize',
-  'partnerPass', 'pokeSpots', 'coop'];
+  'partnerPass', 'pokeSpots', 'infiniteTms', 'expAll', 'cstickMove', 'coop'];
 
 const GAMES = {
   colosseum: {
@@ -60,10 +60,12 @@ const GAMES = {
     // Jukebox read XD's own disc (xd-disc.js: its species, models, streamed cries and streamed music). TMs listed by their
     // moves' names are host/tmnames.c's, with XD's own bag and shop calls. Language packs are host/language.c's, XD's own
     // packs in their own folder (language-packs.js): none official yet, fan translations from the extras tool's template.
-    // More Poké Spot Pokémon is XD's own (host/xd/pokespot.c). Split-screen co-op is host/xd/coop.c
+    // More Poké Spot Pokémon is XD's own (host/xd/pokespot.c). Infinite TMs and Exp All are
+    // host/gameplay.c's, with XD's own TM and EXP calls; the C-Stick already moves like the Control Stick in XD.
+    // Split-screen co-op is host/xd/coop.c
     features: ['online', 'teamBuilder', 'generations', 'widescreen', 'hdText', 'hdTextures', 'fastForward', 'skipMovies', 'gciSaves', 'discordPresence',
       'battleSpeed', 'quickMoves', 'shiny', 'starters', 'pokemonPacks', 'pbrAssets', 'gbaLink', 'randomizer', 'storyParty', 'pokedex', 'jukebox', 'tmNames', 'playAs', 'customize',
-      'languagePacks', 'pokeSpots', 'coop']
+      'languagePacks', 'pokeSpots', 'infiniteTms', 'expAll', 'coop']
   }
 };
 

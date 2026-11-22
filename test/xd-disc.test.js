@@ -15,7 +15,8 @@ function streamHead({ rate = 32000, samples, channels = 2, block, loop = null })
   head.writeUInt32BE(samples, 0x0c);
   head.writeUInt32BE(channels, 0x14);
   head.writeUInt32BE(block, 0x18);
-  if (loop) { head.writeUInt32BE(1, 0x1c); head.writeUInt32BE(loop[0], 0x20); head.writeUInt32BE(loop[1], 0x28); }
+  // the loop's start at 0x20 and its end at 0x24; the word at 0x28 is something else, short of the end, which the decoder must not take for it
+  if (loop) { head.writeUInt32BE(1, 0x1c); head.writeUInt32BE(loop[0], 0x20); head.writeUInt32BE(loop[1], 0x24); head.writeUInt32BE(Math.max(0, loop[1] - 0x20), 0x28); }
   return head;
 }
 // A frame whose 14 samples are all `value` (scale 1, predictor 0: no history counts)
@@ -32,7 +33,7 @@ test('a stream\'s channels are its blocks in turn, each decoded as DSP-ADPCM', (
   assert.throws(() => xdDisc.decodeStream(Buffer.alloc(0xc0), data), /isn't on the disc/);
 });
 
-test('a stream\'s loop is in nibble addresses: 16 to a frame, the first two its header', () => {
+test('a stream\'s loop is in nibble addresses: 16 to a frame, the first two its header, from the word at 0x20 to the end word at 0x24', () => {
   const { loop } = xdDisc.decodeStream(streamHead({ samples: 56, block: 64, loop: [0x12, 0x3f] }), Buffer.alloc(64 * 2));
   assert.deepEqual(loop, { start: 14, end: 56 });
   assert.equal(xdDisc.sampleAt(2), 0);
@@ -76,11 +77,20 @@ test('an XD model is made Colosseum\'s: header, model, particles, motion slots a
 });
 
 test('song names: the ones known by name, the rest made readable', () => {
-  assert.equal(xdDisc.songTitle('stm_bgm_title.fsys'), 'Title Screen');
+  // the title screen's music and the demo's opening are each other's names' songs, as the player corrected them
+  assert.equal(xdDisc.songTitle('stm_bgm_title.fsys'), 'Demo Opening');
+  assert.equal(xdDisc.songTitle('stm_bgm_open_roll.fsys'), 'Title Screen');
+  assert.equal(xdDisc.songTitle('stm_bgm_darkside.fsys'), 'Pyrite Town');
+  assert.equal(xdDisc.songTitle('stm_bgm_saint.fsys'), 'Relic Forest');
+  assert.equal(xdDisc.songTitle('stm_bgm_ev_ore.fsys'), 'ONBS');
+  assert.equal(xdDisc.songTitle('stm_bgm_tool_battle.fsys'), 'VS Selection Screen');
+  assert.equal(xdDisc.songTitle('stm_bgm_chr_boss01.fsys'), 'Cipher Admin\'s Theme');
+  assert.equal(xdDisc.songTitle('stm_bgm_chr_mecha2.fsys'), 'Master Greevil\'s Theme');
+  assert.equal(xdDisc.songTitle('stm_bgm_chr_chiriru.fsys'), 'Kandee\'s Theme');
   assert.equal(xdDisc.songTitle('stm_me_me_win.fsys'), 'Win Battle');
   assert.equal(xdDisc.songTitle('stm_bgm_b_colosseum1.fsys'), 'Colosseum - 1st Round');
   assert.equal(xdDisc.songTitle('stm_bgm_b_paira.fsys'), 'Colosseum - 1st Round (Pyrite)');
-  assert.equal(xdDisc.songTitle('stm_bgm_chr_mecha.fsys'), 'Chr mecha');
+  assert.equal(xdDisc.songTitle('stm_bgm_chr_mecha.fsys'), 'Mr. Verich\'s Theme');
   assert.equal(xdDisc.songTitle('stm_me_fanfare00.fsys'), 'VS Battle Fanfare 1');
 });
 

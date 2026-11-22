@@ -1,8 +1,8 @@
 {
-  "version": "2026.11.18.2",
+  "version": "2026.11.19",
   "folder": "pbr-upscale-4x",
-  "url": "https://github.com/chasem-dev/pokemon-colosseum-extras/releases/download/pbr-texture-pack-2026.11.18.2/pbr-texture-pack-2026-11-18.2.zip",
-  "sha256": "d570c472fbaacbbd0e896c394363a07bb47d3b67b16c94526425b0b34805cca8",
-  "size": 274558613,
-  "unpacked": 273643368
+  "url": "https://github.com/chasem-dev/pokemon-colosseum-extras/releases/download/pbr-texture-pack-2026.11.19/pbr-texture-pack-2026-11-19.zip",
+  "sha256": "61cd2a67c89e8b8f7114804dbcfb71f29d31d9ebb0259cfe36fc96b6a42a1896",
+  "size": 274036262,
+  "unpacked": 273119777
 }

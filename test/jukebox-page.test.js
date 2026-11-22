@@ -27,7 +27,7 @@ test('the music is stopped when the game starts, and leaving the page does not s
   assert.match(preload, /onJukeboxStop/);
   assert.match(main, /async function play\([^)]*\) \{\s*broadcast\('jukebox-stop'\)/);
   assert.match(script, /onJukeboxStop\(close\)/);
-  assert.match(script, /hide\(\) \{\}/);
+  assert.match(script, /hide\(\) \{ window\.coloJukeboxChamber\?\.hide\(\); \}/);   // only the chamber's picture goes
 });
 
 test('a long song name wraps in its button instead of being cut off', () => {

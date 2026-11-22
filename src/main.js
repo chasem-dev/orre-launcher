@@ -58,6 +58,9 @@ const pokedexCries = pokemonCries.create();
 const jukeboxSongs = require('./jukebox-songs');
 const jukeboxPlaylists = require('./jukebox-playlists');
 const { Disc } = require('./disc');
+const fsysFile = require('./fsys');
+const xdDiscModule = require('./xd-disc');
+const xdPkx = xdDiscModule.colosseumPkx;
 const texturePackLookup = require('./texture-pack-lookup');
 const { pathToFileURL } = require('node:url');
 const battleData = require('./battle-data').create();
@@ -75,6 +78,7 @@ const shadowtrade = require('./shadowtrade');
 const { GameLink } = require('./game-link');
 const { OnlineTrades, summary: tradeSummary } = require('./online-trades');
 const { LocalTrades } = require('./local-trades');
+const saveImport = require('./save-import');
 const { Arrivals } = require('./arrivals');
 const tradeConvert = require('./trade-convert');
 const { arrivalLines } = require('./arrival-show');
@@ -142,6 +146,43 @@ function showWindow() {
 
 function broadcast(channel, data) {
   if (window && !window.isDestroyed()) window.webContents.send(channel, data);
+}
+
+// The Jukebox can be taken out of the launcher into a window of its own (the music, the song list and the Purification Chamber, to leave on another
+// screen). The music plays from that window while it is open; the launcher's window says so, and closing the window ends the music.
+// What was playing is handed over when the window opens (from the launcher's page) and when it closes (back to it): the window reports its song and place
+// twice a second, and the place is taken on by the time that has passed since.
+let jukeboxWindow = null, jukeboxReport = null, jukeboxHandoff = null;
+const jukeboxWindowOpen = () => Boolean(jukeboxWindow && !jukeboxWindow.isDestroyed());
+const aged = report => (report?.snapshot?.id ? { ...report.snapshot, position: report.snapshot.position + (report.snapshot.paused ? 0 : (Date.now() - report.at) / 1000) } : null);
+function openJukeboxWindow(snapshot = null) {
+  if (jukeboxWindowOpen()) {
+    if (jukeboxWindow.isMinimized()) jukeboxWindow.restore();
+    jukeboxWindow.show();
+    jukeboxWindow.focus();
+    return true;
+  }
+  jukeboxHandoff = snapshot?.id ? { snapshot, at: Date.now() } : null;
+  jukeboxReport = null;
+  const opened = new BrowserWindow({
+    width: 1100, height: 760, minWidth: 640, minHeight: 480, backgroundColor: '#1a1420', title: 'Orre Launcher: Jukebox',
+    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true },
+  });
+  jukeboxWindow = opened;
+  opened.setMenuBarVisibility(false);
+  opened.loadFile(path.join(__dirname, 'index.html'), { query: { window: 'jukebox' } });
+  opened.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  opened.on('closed', () => {
+    if (jukeboxWindow === opened) jukeboxWindow = null;
+    broadcast('jukebox-window', { open: false, handoff: aged(jukeboxReport) });
+    jukeboxReport = null;
+  });
+  broadcast('jukebox-window', { open: true });
+  return true;
+}
+function closeJukeboxWindow() {
+  if (jukeboxWindowOpen()) jukeboxWindow.close();
+  return true;
 }
 
 function activityState() {
@@ -1229,7 +1270,9 @@ async function makePbrModels() {
   if (!wanted.length) throw new Error('Turn on Generation 4 Pokémon or Replace all models first: their models and cries are what this makes.');
   if (!fs.existsSync(port.pbrModelsScript(root))) throw new Error('This version of the game can\'t make Battle Revolution assets yet. Update it from the Play page.');
   await ensureBuildTools();
-  const cmd = port.pbrModelsCommand(root, config.pbrDisc, pbrWork(), wanted, process.platform, toolEnv());
+  let gamecube = null;   // the game's own disc, for the Pokémon's particles: without it they're made with none
+  try { gamecube = port.validateRom(config.rom, config.game); } catch (_) { /* not chosen yet */ }
+  const cmd = port.pbrModelsCommand(root, config.pbrDisc, pbrWork(), wanted, process.platform, toolEnv(), gamecube);
   await launch(cmd.command, cmd.args, { cwd: cmd.cwd, env: cmd.env }, 'Make Battle Revolution assets');
   const { made } = pbrState();
   log(`Battle Revolution assets: ${made} of ${wanted.length} Pokémon made. They show in the Pokédex, and in your next game.`);
@@ -1523,8 +1566,10 @@ function pokedexList(rom) {
     if (pokedexPacks.get(String(key).slice('pack:'.length))?.ownCry) return true;
     try { return pokedexCries.has(rom, pokedexCry(rom, key)); } catch (_) { return false; }
   };
-  // canMakePacks: Make a pack is offered for the game's own Pokémon
-  return { species: species.map(entry => ({ ...entry, hasCry: hasCry(entry.national) })), packs: packs.map(entry => ({ ...entry, hasCry: hasCry(entry.key) })), problems,
+  // canMakePacks: Make a pack is offered for the game's own Pokémon. A pack's speciesId is its number in the chosen game's
+  // saves (XD's Generation 4 Pokémon are numbered 2 past Colosseum's), for the Pokémon tab to find it by.
+  return { species: species.map(entry => ({ ...entry, hasCry: hasCry(entry.national) })),
+    packs: packs.map(entry => ({ ...entry, speciesId: tradeConvert.speciesFromColosseum(config.game, entry.packId), hasCry: hasCry(entry.key) })), problems,
     canMakePacks: supports('pokemonPacks') && (own || teamDiscReady()) };
 }
 
@@ -1714,8 +1759,18 @@ function jukeboxRender(id) {
   });
 }
 
+// A story's Play: no game left running is adopted while it starts and runs (the link file names this run's link), and
+// the launcher listens for one again once it ends, however it ends
+let storyStarting = 0;
 async function play(installation = null, battle = null) {
   broadcast('jukebox-stop');  // the Jukebox's music and the game would share the sound device
+  if (jukeboxWindowOpen()) jukeboxWindow.webContents.send('jukebox-stop');
+  if (battle) return playGame(installation, battle);
+  storyStarting++;
+  try { return await playGame(installation, battle); } finally { if (!--storyStarting) openAdoptLink(); }
+}
+
+async function playGame(installation = null, battle = null) {
   const root = installation?.repo || requireRepo();
   const chosen = activeGame();
   if (battle && !supports('online')) throw new Error('Online battles are for Pokémon Colosseum for now.');
@@ -1746,6 +1801,9 @@ async function play(installation = null, battle = null) {
   // The launcher link (src/game-link.js): the game shows its save to the Pokémon page over it and takes Shadowtrade's
   // commands (host/launcherlink.c, host/shadowtrade.c)
   if (!battle && trades().busy) throw new Error('Shadowtrade is changing your save. Play again in a moment.');
+  const before = adopted ? { game: storyGame } : heldGame();
+  if (before) throw new Error(`${shortGameName(before.game)} is still running from before (it was open when the launcher closed). Close it first, then play.`);
+  if (!battle) closeAdoptLink();
   const storyLink = !battle ? await openStoryLink(chosen.id) : null;
   const playEnv = { ...port.buildEnvironment(settings, rom, root, { customTextures: customTextureDirectory(), pbrTextures: pbrTextureFolder(settings), laterGenerations: onlineFeatures(root).randomizerGenerations,
     // a new randomized run can have packs' own Pokémon: there are some, and the game can choose them
@@ -1764,7 +1822,7 @@ async function play(installation = null, battle = null) {
     SMS_GX_SHADER_CACHE: path.join(cacheFolder, chosen.id === games.DEFAULT ? 'gx-programs.bin' : `gx-programs-${chosen.id}.bin`),
     SMS_TEXTURE_PACK_CACHE: path.join(cacheFolder, 'texture-mips'),
     COLO_SETTINGS_SAVE: gameSettingsFile,
-    ...(storyLink ? storyLink.environment() : {}),
+    ...(storyLink ? { ...storyLink.environment(), COLO_LINK_FILE: gameLinkFile() } : {}),
     ...(battle ? { COLO_ONLINE: String(battle.port), COLO_SKIP_MOVIES: '1', COLO_NOCARD: '1' } : {}),
     // online co-op (src/together.js): hosting or joining the story, for this play only
     ...(!battle && playingTogether ? together.environment(playingTogether) : {}),
@@ -1783,7 +1841,10 @@ async function play(installation = null, battle = null) {
   const settingsWatch = setInterval(() => keepGameSettings(gameSettingsFile), GAME_SETTINGS_POLL_MS);
   if (!battle) storyGame = chosen.id;
   try {
-    return await launch(cmd.command, cmd.args, { cwd: cmd.cwd, env: cmd.env }, playLabel(), true);
+    const running = launch(cmd.command, cmd.args, { cwd: cmd.cwd, env: cmd.env }, playLabel(), true);
+    // (launch has started it by now: its pid, kept while it runs, for a launcher opened after this one closes)
+    if (!battle && active?.label === playLabel() && active.child?.pid) noteGameRunning(chosen.id, active.child.pid, cmd.command);
+    return await running;
   } catch (error) {
     // Stop game ends it on purpose: that is no failure to report.
     if (!wasStopped(startedAt)) {
@@ -1799,6 +1860,7 @@ async function play(installation = null, battle = null) {
     if (!battle) {
       storyGame = null;
       closeStoryLink(storyLink);
+      forgetGameRunning(process.pid);
       broadcast('pokemon-changed', chosen.id);
       // trades waiting for the save can go to the card now
       setTimeout(() => { syncTrades(); if (onlineTradesInstance?.state.journal.length) syncOnlineTrades(); if (localTradesInstance?.state.journal.length) syncLocalTrades(); }, 0);
@@ -1842,6 +1904,15 @@ async function openStoryLink(game) {
   closeStoryLink(storyLive?.link);
   const link = new GameLink({ log });
   await link.listen();
+  writeGameLink(link);
+  wireStoryLive(link, game);
+  link.on('hello', hello => log(`The game is linked to the launcher (${[...hello.caps].join(', ') || 'no features'}).`));
+  return link;
+}
+
+// The running story's live picture over `link`: the Pokémon page follows it, and trades and arrivals waiting for the save
+// go to the game once its save is in
+function wireStoryLive(link, game) {
   let refresh = null, synced = false, onlineSynced = false, localSynced = false;
   storyLive = new shadowtrade.LiveGame(link, { onChange: ({ whole, closed }) => {
     if (!refresh) refresh = setTimeout(() => { refresh = null; broadcast('pokemon-changed', game); }, LIVE_REFRESH_MS);
@@ -1855,8 +1926,130 @@ async function openStoryLink(game) {
     if (localWaiting && storyLive?.current()?.head.loaded && storyLive.current().head.safe && !localSynced) { localSynced = true; syncLocalTrades(); }
     if (storyLive?.current()?.head.loaded && storyLive.current().head.safe) deliverArrivals();
   } });
-  link.on('hello', hello => log(`The game is linked to the launcher (${[...hello.caps].join(', ') || 'no features'}).`));
-  return link;
+}
+
+// --- A game left running. The launcher closing while its game plays leaves the game running (before-quit), and its link
+// goes with the launcher. The game links again to the launcher opened next (host/launcherlink.c, COLO_LINK_FILE): the
+// launcher keeps the port:token it listens on in the game-link file, and a game that links to it while nothing plays is
+// taken as the running story (adopted), so trades go through the game, which saves them itself, and not round it into
+// the card (which the game would save over). The game's pid is kept in game-running.json while it plays, so a game that
+// can't link again (a build from before) still keeps the card from being changed under it until it closes.
+const gameLinkFile = () => path.join(app.getPath('userData'), 'game-link');
+const gameRunningFile = () => path.join(app.getPath('userData'), 'game-running.json');
+const RUNNING_KEPT_MS = 3 * 864e5;   // a pid noted longer ago than this is taken as another program's by now
+let adoptLink = null, adopted = false, heldCache = null, adoptEpoch = 0;
+
+function writeAtomicText(file, text) {
+  const temporary = `${file}.${process.pid}.tmp`;
+  fs.writeFileSync(temporary, text, { mode: 0o600 });
+  try { fs.renameSync(temporary, file); } catch (error) {
+    if (process.platform !== 'win32') throw error;
+    fs.rmSync(file, { force: true });
+    fs.renameSync(temporary, file);
+  }
+}
+function writeGameLink(link) {
+  try { writeAtomicText(gameLinkFile(), `${link.port}:${link.token}\n`); } catch (error) { log(`Launcher link: couldn't write the link file (${error.message}).`); }
+}
+function noteGameRunning(game, pid, command) {
+  heldCache = null;
+  try { writeAtomicText(gameRunningFile(), JSON.stringify({ game, pid, exe: path.basename(command), launcher: process.pid, at: Date.now() })); }
+  catch (error) { log(`Couldn't note the running game (${error.message}).`); }
+}
+// the note gone: the game closed (launcher: only the note this launcher wrote)
+function forgetGameRunning(launcher = null) {
+  heldCache = null;
+  try {
+    if (launcher !== null && JSON.parse(fs.readFileSync(gameRunningFile(), 'utf8')).launcher !== launcher) return;
+  } catch (_) { /* none, or unreadable: gone either way */ }
+  fs.rmSync(gameRunningFile(), { force: true });
+}
+// Whether pid is the game: it is running, and (where that can be read) it is the game's program, not another that has
+// its pid since
+const gameProcessNames = new Map();   // pid -> whether it is the game's program (Windows: tasklist's answer)
+function gameProcessAlive(running) {
+  try { process.kill(running.pid, 0); } catch (error) { if (error.code !== 'EPERM') return false; }
+  if (process.platform === 'linux') {
+    try { return path.basename(fs.readlinkSync(`/proc/${running.pid}/exe`)) === running.exe; } catch (_) { return true; }
+  }
+  if (process.platform === 'win32' && running.exe) {
+    // Windows soon gives a pid to another program: its image name says (until it answers, taken as the game)
+    const key = `${running.pid}:${running.exe}`;
+    if (!gameProcessNames.has(key)) {
+      gameProcessNames.set(key, true);
+      execFile('tasklist', ['/FI', `PID eq ${running.pid}`, '/FO', 'CSV', '/NH'], { windowsHide: true, timeout: 8000 }, (error, stdout) => {
+        if (error) return;
+        const name = String(stdout).split(/\r?\n/).map(line => line.split('","')[0].replace(/^"/, '')).find(Boolean) || '';
+        const same = name.toLowerCase() === running.exe.toLowerCase();
+        gameProcessNames.set(key, same);
+        if (!same) { heldCache = null; broadcast('pokemon-changed', running.game); }
+      });
+    }
+    return gameProcessNames.get(key);
+  }
+  return true;
+}
+// A game this launcher didn't start that is still running and isn't linked to it: { game, pid } or null. Its save is
+// left alone while it runs (Online Trades, Shadowtrade, trades between your games and Import wait), since the game
+// would save over a change made to the card.
+function heldGame() {
+  if (adopted || (active?.child && isPlayLabel(active.label))) return null;
+  if (heldCache && Date.now() - heldCache.at < 2000) return heldCache.value;
+  let value = null;
+  try {
+    const running = JSON.parse(fs.readFileSync(gameRunningFile(), 'utf8'));
+    const stale = !Number.isInteger(running?.pid) || running.launcher === process.pid || Date.now() - running.at > RUNNING_KEPT_MS || !gameProcessAlive(running);
+    if (stale) forgetGameRunning();
+    else value = { game: running.game, pid: running.pid };
+  } catch (_) { /* no game noted */ }
+  heldCache = { at: Date.now(), value };
+  return value;
+}
+const heldMessage = game => `${shortGameName(game)} is still running from before (it was open when the launcher closed). Your Pokémon wait until it links to the launcher or closes.`;
+
+// Listening for a game left running, while nothing plays: the link file names this link
+const adoptable = () => !adoptLink && !storyGame && !storyLive && !storyStarting && app.isReady();
+async function openAdoptLink() {
+  if (!adoptable()) return;
+  const epoch = adoptEpoch;
+  const link = new GameLink({ log });
+  try { await link.listen(); } catch (error) { log(`Launcher link: ${error.message}`); return; }
+  if (!adoptable() || epoch !== adoptEpoch) { link.close(); return; }
+  adoptLink = link;
+  writeGameLink(link);
+  link.on('hello', hello => {
+    const game = games.ids().includes(hello.game) ? hello.game : null;
+    if (!game || storyGame || adoptLink !== link) { log('Launcher link: a game linked while another plays: let go.'); closeAdoptLink(); openAdoptLink(); return; }
+    adopted = true;
+    storyGame = game;
+    heldCache = null;
+    wireStoryLive(link, game);
+    log(`${shortGameName(game)} was already running (it was open when the launcher closed): it's linked to the launcher again, and trades go through the game (${[...hello.caps].join(', ') || 'no features'}).`);
+    broadcast('pokemon-changed', game);
+  });
+  link.on('close', () => {
+    if (adoptLink !== link || !adopted) return;
+    // the game closed, or let the link go
+    const game = storyGame;
+    adopted = false;
+    storyGame = null;
+    adoptLink = null;
+    closeStoryLink(link);
+    forgetGameRunning();
+    log(`${shortGameName(game)} closed (the game that was running from before).`);
+    broadcast('pokemon-changed', game);
+    setTimeout(() => { syncTrades(); if (onlineTradesInstance?.state.journal.length) syncOnlineTrades(); if (localTradesInstance?.state.journal.length) syncLocalTrades(); }, 0);
+    try { makeSaveBackup('after-play'); } catch (error) { log(`Save backup failed: ${error.message}`); }
+    openAdoptLink();
+  });
+}
+function closeAdoptLink() {
+  adoptEpoch++;
+  const link = adoptLink;
+  if (!link) return;
+  adoptLink = null;
+  if (adopted) { adopted = false; storyGame = null; }
+  closeStoryLink(link);
 }
 
 function closeStoryLink(link) {
@@ -1879,6 +2072,8 @@ function arrivals() {
   if (!arrivalsInstance) arrivalsInstance = new Arrivals({ folder: path.join(app.getPath('userData'), 'arrivals'), log,
     onChange: () => { arrivalRetryAt = 0; setTimeout(deliverArrivals, 0); },
     describe: describeArrival,
+    trainerOf: game => (storyGame === game ? storyLive?.current()?.model?.trainerId : null) ?? savePokemon.readCard(saveDirectoryOf(game), game)?.trainerId ?? null,
+    onRestored: entry => broadcast('pokemon-changed', entry.game),
     onDone: (entry, result) => {
       log(`Trades: the game showed ${entry.kind === 'shadowtrade' ? 'the Shadow Pokémon' : 'the Pokémon'} from ${entry.from || 'the trade'}${result.evolved ? `, which evolved` : ''}.`);
       if (entry.kind === 'trade' && entry.tradeId) onlineTrades().arrived(entry.tradeId, result);
@@ -1970,6 +2165,7 @@ function saveRandomized(game) { try { return Boolean(saveRun(saveDirectoryOf(gam
 // How a game's save can be reached now: the running game's (once it has a save loaded and sends its live picture), the card
 // while that game isn't running, or null.
 function tradeAccess(game) {
+  if (storyGame !== game && heldGame()?.game === game) return null;
   const randomized = saveRandomized(game);
   if (!shadowtradeReady(game) && storyGame !== game) return null;
   if (storyGame === game) {
@@ -2001,6 +2197,9 @@ function pokemonPage() {
       canTrade = false;
       notice = live ? 'Continue your save in the game to see its Pokémon as they are now and trade.'
         : 'This is your last save. This version of the game can\'t trade while it runs: update the game, or trade once it closes.';
+    } else if (heldGame()?.game === game) {
+      canTrade = false;
+      notice = `This is your last save. ${heldMessage(game)}`;
     }
   }
   if (canTrade && model && !(source === 'live' ? live.head.entries >= 2 : shadowtradeReady(game))) {
@@ -2048,11 +2247,13 @@ function onlineTrades() {
   if (!onlineTradesInstance) onlineTradesInstance = new OnlineTrades({ folder: path.join(app.getPath('userData'), 'online-trades'),
     url: shadowtrade.serverUrl(), fetch: (...args) => net.fetch(...args), log, onChange: view => broadcast('online-trades', view),
     accessFor: onlineTradeAccess, receiverFor: tradeReceiver, launcher: app.getVersion(), arrivals: arrivals(),
+    unavailable: game => (storyGame !== game && heldGame()?.game === game ? heldMessage(game) : null),
     name: game => { try { return (storyGame === game ? storyLive?.current()?.model?.trainer : null) || savePokemon.readCard(saveDirectoryOf(game), game)?.trainer || 'Trainer'; } catch (_) { return 'Trainer'; } } });
   return onlineTradesInstance;
 }
 
 function onlineTradeAccess(game) {
+  if (storyGame !== game && heldGame()?.game === game) return null;
   if (storyGame === game) {
     const live = storyLive?.current();
     if (!live?.head.loaded || !storyLive.link.has('trade.1')) return null;
@@ -2098,6 +2299,7 @@ function localTradeAccess(game) {
 }
 function localTradeUnavailable(game) {
   const name = shortGameName(game);
+  if (storyGame !== game && heldGame()?.game === game) return heldMessage(game);
   if (storyGame === game) {
     if (!storyLive?.current()?.head.loaded) return `${name} is running: continue your save in it, and its Pokémon show here.`;
     if (!storyLive.link.has('trade.1')) return `This version of ${name} can't trade while it runs: update it, or close it and trade.`;
@@ -2109,6 +2311,101 @@ function syncLocalTrades() {
   if (localSyncing) return localSyncing;
   localSyncing = localTrades().sync().catch(error => log(`Trades between your games: ${error.message}`)).finally(() => { localSyncing = null; });
   return localSyncing;
+}
+
+// --- Import from a GBA or DS save (src/save-import.js): the Pokémon page's Import button opens one, shows its party and
+// boxes, and copies the Pokémon picked into the chosen game's save, reached as Online Trades reach it (the card, or the
+// running game). The file is only read. A DS save needs the Generation 4 Pokémon setting (tradeReceiver).
+let importing = null;   // { file, read: save-import's reading of it, game: the game it was opened for }
+const IMPORT_KINDS = {
+  gba: { name: 'GBA save', games: 'Ruby, Sapphire, Emerald, FireRed or LeafGreen', extensions: ['sav', 'srm'] },
+  ds: { name: 'DS save', games: 'Diamond, Pearl or Platinum', extensions: ['sav', 'srm', 'dsv'] }
+};
+// Why the chosen game can't import from that kind of save now, or null
+function importProblem(kind) {
+  if (kind === 'ds' && !tradeReceiver(config.game).laterPokemon)
+    return 'Turn on Generation 4 Pokémon first, under Settings → Gameplay → Later generations: Pokémon from a DS save need it.';
+  return null;
+}
+// The Pokémon already in the chosen game's save, by species:personality:trainer (the page's model)
+function importKeys() {
+  const model = pokemonPage().model;
+  return new Set(model ? [...model.party, ...model.boxes.flatMap(box => box.pokemon)].filter(Boolean).map(each => each.key) : []);
+}
+function importView() {
+  const game = config.game, problems = Object.fromEntries(Object.keys(IMPORT_KINDS).map(kind => [kind, importProblem(kind)]));
+  if (!importing || importing.game !== game) return { game, problems, file: null };
+  const receiver = tradeReceiver(game), keys = importKeys(), read = importing.read;
+  const each = (entry, place) => {
+    if (!entry) return null;
+    const judged = saveImport.judge(entry, receiver);
+    let bytes = judged.bytes, shown = null;
+    try { bytes ||= tradeConvert.write(game, judged.pokemon); shown = tradeSummary(game, bytes, game); } catch (_) { /* damaged: no picture of it */ }
+    const at = game === 'xd' ? savePokemon.XD.at : savePokemon.COLOSSEUM.at;
+    const already = Boolean(judged.bytes) && keys.has(`${bytes.readUInt16BE(at.species)}:${bytes.readUInt32BE(at.rnd) >>> 0}:${bytes.readUInt32BE(at.trainer) >>> 0}`);
+    return { ...place, summary: shown ? { ...shown, evolvesInto: 0 } : null, problems: judged.problems, notes: judged.notes, already,
+      canImport: Boolean(judged.bytes) && !already };
+  };
+  return { game, problems, file: { name: path.basename(importing.file), kind: read.kind, gameName: read.gameName, trainer: read.trainer, trainerId: read.trainerId,
+    party: read.party.map((entry, slot) => each(entry, { area: 'party', box: 0, slot })),
+    boxes: read.boxes.map((box, b) => ({ name: box.name, pokemon: box.pokemon.map((entry, slot) => each(entry, { area: 'box', box: b, slot })) })) } };
+}
+async function importOpen(kind) {
+  const about = IMPORT_KINDS[kind];
+  if (!about) throw new Error('No such kind of save.');
+  const problem = importProblem(kind);
+  if (problem) throw new Error(problem);
+  const chosen = await dialog.showOpenDialog(window, { title: `Import from a ${about.name} (${about.games})`, properties: ['openFile'],
+    filters: [{ name: `${about.name}s`, extensions: about.extensions }, { name: 'All files', extensions: ['*'] }] });
+  if (chosen.canceled || !chosen.filePaths.length) return importView();
+  const read = saveImport.readFile(chosen.filePaths[0]);
+  if (read.kind !== kind) {
+    const other = importProblem(read.kind);
+    if (other) throw new Error(`That's a ${IMPORT_KINDS[read.kind].name}. ${other}`);
+  }
+  importing = { file: chosen.filePaths[0], read, game: config.game };
+  log(`Import: opened ${path.basename(chosen.filePaths[0])} (${read.gameName}, ${read.trainer}).`);
+  return importView();
+}
+// The Pokémon at each place of the open file, copied into the chosen game's save one at a time; stops at the first the
+// save can't take. Returns { view, results: [{ place, ok, nickname, area, box, slot, code, message }] }.
+async function importPokemon(places) {
+  if (!importing || importing.game !== config.game) throw new Error('Open a GBA or DS save first.');
+  const game = config.game, problem = importProblem(importing.read.kind);
+  if (problem) throw new Error(problem);
+  if (storyGame === game && !storyLive?.current()?.head.loaded) throw new Error(`${shortGameName(game)} is running: continue your save in it first, or close it.`);
+  if (storyGame !== game && heldGame()?.game === game) throw new Error(heldMessage(game));
+  // the card is backed up once, before the first Pokémon goes in
+  let backedUp = false;
+  const access = storyGame === game ? onlineTradeAccess(game) : shadowtrade.cardAccess({ game, saveDir: saveDirectoryOf(game), backup: () => {
+    if (backedUp) return;
+    backedUp = true;
+    const result = saves.backupSaves(saveDirectoryOf(game), saves.backupRoot(), 'before-import');
+    if (!result.empty) log(`Saved ${result.count} memory card file(s) to ${result.directory}`);
+  } });
+  if (!access) throw new Error(`This version of ${shortGameName(game)} can't take a Pokémon while it runs: update it, or close it and import.`);
+  if (access.mode === 'card' && !access.read()) throw new Error(`There's no ${shortGameName(game)} save yet: play and save once, then import.`);
+  const receiver = tradeReceiver(game), results = [];
+  for (const place of places) {
+    const list = place.area === 'party' ? importing.read.party : importing.read.boxes[place.box]?.pokemon;
+    const entry = list?.[place.slot];
+    if (!entry) continue;
+    const judged = saveImport.judge(entry, receiver), nickname = entry.pokemon.nicknameText || 'It';
+    if (!judged.bytes) { results.push({ place, ok: false, nickname, message: judged.problems[0] }); continue; }
+    const at = game === 'xd' ? savePokemon.XD.at : savePokemon.COLOSSEUM.at, bytes = judged.bytes;
+    const identity = { species: bytes.readUInt16BE(at.species), rnd: bytes.readUInt32BE(at.rnd), trainer: bytes.readUInt32BE(at.trainer) };
+    if (access.has(identity)) { results.push({ place, ok: false, nickname, code: 'already', message: 'It\'s in your save already.' }); continue; }
+    const given = await access.tradeGive(bytes);
+    if (!given.ok) {
+      results.push({ place, ok: false, nickname, code: given.code, message: given.code === 'full' ? 'Your party and PC boxes are full.' : `The game couldn't take it (${given.code}).` });
+      if (['full', 'timeout', 'save', 'unknown'].includes(given.code)) break;
+      continue;
+    }
+    results.push({ place, ok: true, nickname, area: given.area, box: given.box, slot: given.slot });
+    log(`Import: ${nickname} from ${importing.read.gameName} is in your ${shortGameName(game)} save (${given.area === 'party' ? 'party' : `box ${given.box + 1}`}).`);
+  }
+  broadcast('pokemon-changed');
+  return { view: importView(), results };
 }
 
 // --- Discord activity (src/discord.js, src/presence.js): only while the game runs, and only with the setting on.
@@ -3332,6 +3629,16 @@ function registerHandlers() {
   ipcMain.handle('play-together', (_event, value) => exclusive(playLabel(), () => playTogether(value), true));
   ipcMain.handle('together-state', () => together.remembered(config.together));
   ipcMain.handle('together-copy', (_event, code) => { clipboard.writeText(String(code || '').slice(0, 7)); return true; });
+  ipcMain.handle('save-import', async (_event, action, value) => {
+    if (action === 'view') return importView();
+    if (action === 'open') return importOpen(String(value));
+    if (action === 'close') { importing = null; return importView(); }
+    if (action === 'import') {
+      const places = (Array.isArray(value) ? value : []).slice(0, 6 + 18 * 30).map(place => ({ area: place?.area === 'box' ? 'box' : 'party', box: Number(place?.box) || 0, slot: Number(place?.slot) || 0 }));
+      return importPokemon(places);
+    }
+    throw new Error('No such import action.');
+  });
   ipcMain.handle('online-save', (_event, value) => {
     config.online = parties.normalize(value);
     saveConfig();
@@ -3405,12 +3712,48 @@ function registerHandlers() {
   ipcMain.handle('game-logos', () => gameLogos());
   ipcMain.handle('jukebox-render', (_event, id) => jukeboxRender(String(id)));
   ipcMain.handle('jukebox-close', () => jukeboxStopWorker());
+  ipcMain.handle('jukebox-window-open', (_event, snapshot) => openJukeboxWindow(snapshot));
+  ipcMain.handle('jukebox-window-take', () => { const taken = aged(jukeboxHandoff); jukeboxHandoff = null; return taken; });
+  ipcMain.handle('jukebox-window-report', (event, snapshot) => { if (jukeboxWindowOpen() && event.sender === jukeboxWindow.webContents) jukeboxReport = { snapshot, at: Date.now() }; });
+  ipcMain.handle('jukebox-window-close', () => closeJukeboxWindow());
+  ipcMain.handle('jukebox-window-state', () => jukeboxWindowOpen());
   ipcMain.handle('jukebox-playlists', () => { requireFeature('jukebox', 'The Jukebox'); return readJukeboxPlaylists()[config.game] ?? []; });
   ipcMain.handle('jukebox-playlists-save', (_event, list) => saveJukeboxPlaylists(list));
   ipcMain.handle('pokedex-clip', (_event, key, form, index) => {
     const look = pokedexLook(key, String(form));
     return look.pkx ? hsdModel.parseClip(look.pkx, Number(index)) : pokedexData.clip(port.validateRom(config.rom, config.game), look.national, String(form), Number(index));
   });
+  // The Jukebox's Purification Chamber dances Ludicolo round the edge and Miror B. in the middle, read straight from the disc's own files (the Pokédex's
+  // way would read the whole species list first, which takes a fifth of a second, to find the one file). Miror B. is in XD's disc only (null in Colosseum's).
+  const dancerPkxs = new Map();
+  const dancerPkx = file => {
+    const rom = port.validateRom(config.rom, config.game), key = `${rom}|${file}`;
+    if (dancerPkxs.has(key)) return dancerPkxs.get(key);
+    const disc = new Disc(rom);
+    try {
+      if (!disc.files.has(file)) return null;
+      const raw = Buffer.from(fsysFile.entries(disc.file(file))[0].data()), pkx = xdDiscModule.isXd(disc) ? xdPkx(raw) : raw;
+      dancerPkxs.set(key, pkx);
+      if (dancerPkxs.size > 4) dancerPkxs.delete(dancerPkxs.keys().next().value);
+      return pkx;
+    } finally { disc.close(); }
+  };
+  // Ludicolo is in both games under one name; Miror B. is a trainer model in each, under another (XD's mirrabo, and Colosseum's boss555, the first of its Cipher bosses)
+  ipcMain.handle('jukebox-game', () => config.game);
+  const dancerFiles = { ludicolo: () => 'pkx_runpappa.fsys', miror: () => (config.game === 'xd' ? 'pkx_mirrabo_0101.fsys' : 'pkx_boss555_a1.fsys') };
+  for (const [name, what] of [['ludicolo', 'Ludicolo'], ['miror', 'Miror B.']]) {
+    ipcMain.handle(`jukebox-${name}-model`, () => {
+      requireFeature('jukebox', 'The Jukebox');
+      const pkx = dancerPkx(dancerFiles[name]());
+      return pkx ? withHdTextures(hsdModel.parseModel(pkx)) : null;
+    });
+    ipcMain.handle(`jukebox-${name}-clip`, (_event, index) => {
+      requireFeature('jukebox', 'The Jukebox');
+      const pkx = dancerPkx(dancerFiles[name]());
+      if (!pkx) throw new Error(`${what} isn't on this disc.`);
+      return hsdModel.parseClip(pkx, Number(index));
+    });
+  }
   ipcMain.handle('pokedex-make-pack', (_event, national) => makePokemonPack(Number(national)));
   ipcMain.handle('open-pokemon-packs', () => {
     fs.mkdirSync(pokemonPacksDirectory(), { recursive: true });
@@ -3732,6 +4075,7 @@ function createWindow() {
   });
   if (windowsScaling) displayScale.followDisplayScale(window, screen, WINDOW_SIZE, zoom);
   window.setMenuBarVisibility(false);
+  window.on('closed', closeJukeboxWindow);
   if (config?.launcherWindow === 'fullscreen') window.setFullScreen(true);
   else if (config?.launcherWindow === 'maximized') window.maximize();
   // The event says which way full screen went: on Linux, isFullScreen() can lag the window manager.
@@ -3766,6 +4110,7 @@ if (ownsInstance) app.whenReady().then(async () => {
   setupAppUpdater();
   setupTelemetry();
   startShadowtrade();
+  openAdoptLink();
   removeOldVersionsInBackground();
   // The bundled manifest is the update check. Source downloads and builds
   // start with Update & play, so opening the launcher never changes a game.

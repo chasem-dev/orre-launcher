@@ -197,6 +197,10 @@ test('Battle Revolution models are made by the game\'s own pbr2pkx, with the bui
   const tools = require('path').join('/game', 'tools', 'pbr2pkx');   // with the system's own separators
   assert.deepEqual(cmd.args, [require('path').join(tools, 'make_models.py'), '/discs/pbr.rvz', '/data/battle-revolution', '387', '388']);
   assert.equal(cmd.cwd, tools);
+  assert.equal(cmd.env.PBR2PKX_GAMECUBE_DISC, undefined);
+  // the game's own disc, for the Pokémon's fire, gas and sparkles
+  const withDisc = port.pbrModelsCommand('/game', '/discs/pbr.rvz', '/data/battle-revolution', [77], 'linux', { HOME: '/h' }, '/discs/colosseum.iso');
+  assert.deepEqual(withDisc.env, { HOME: '/h', PBR2PKX_GAMECUBE_DISC: '/discs/colosseum.iso' });
 });
 
 test('Battle Revolution models a newer converter changed count as outdated until they are made again', () => {

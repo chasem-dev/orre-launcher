@@ -250,6 +250,9 @@ export function createMaterial(source, textures, lighting, { shape, shiny = null
       Object.assign(material, { transparent: true, blending: THREE.CustomBlending, blendEquation: pe.blendType === 3 ? THREE.ReverseSubtractEquation : THREE.AddEquation,
         blendSrc: SOURCE_FACTOR[pe.srcFactor] ?? THREE.SrcAlphaFactor, blendDst: DEST_FACTOR[pe.dstFactor] ?? THREE.OneMinusSrcAlphaFactor });
       if (pe.blendType === 3) Object.assign(material, { blendSrc: THREE.OneFactor, blendDst: THREE.OneFactor });
+      // Added onto what's behind it (destination factor ONE: a glow, as Manaphy's discs), the canvas's alpha stays
+      // as it is: the canvas is see-through over the page, and the glow's alpha made its black a dark ring there.
+      if (material.blendDst === THREE.OneFactor) Object.assign(material, { blendSrcAlpha: THREE.ZeroFactor, blendDstAlpha: THREE.OneFactor });
     } else material.blending = THREE.NoBlending;
   } else if (source.xlu) {
     Object.assign(material, { transparent: true, blending: THREE.CustomBlending, blendEquation: THREE.AddEquation,

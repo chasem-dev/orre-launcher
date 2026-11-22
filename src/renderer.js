@@ -1136,8 +1136,8 @@ function refresh(data) {
 }
 
 // The settings that are a list or a range, and the ones that are a switch: each saves under its element's id.
-const SELECTS = ['buttonPrompts', 'promptPad', 'battleRules', 'widescreen', 'resolution', 'frameRate', 'vsync', 'fullscreenMode', 'exclusiveResolution', 'display', 'msaa', 'anisotropic', 'sharpen', 'brightness', 'aspect', 'presentFilter', 'fsrMode', 'textureLoading', 'renderer', 'hdText', 'language', 'battleSpeed', 'fastForward', 'fastForwardSpeed', 'coopHero', 'coopSplit', 'coopPads', 'padMode', 'updateChannel', 'randomizerSeed'];
-const SWITCHES = ['randomizer', 'randomizerStarters', 'randomizerShadow', 'randomizerTrainers', 'randomizerGifts', 'randomizerGen1', 'randomizerGen2', 'randomizerGen3', 'randomizerGen4', 'randomizerPacks', 'randomizerSimilar', 'randomizerNoLegendaries', 'randomizerNoRepeats', 'randomizerBaseForms', 'generation4Pokemon', 'pbrReplaceAll', 'pbrTextures', 'fullscreen', 'hudEdges', 'skipMovies', 'skipBattleAnimations', 'quickMoves', 'quickStatus', 'shinyShadow', 'shinyStarters', 'chooseHero', 'chooseStarters', 'tmNames', 'partnerPass', 'coop', 'pokeSpotPool', 'overlay', 'backgroundInput', 'gbaAutoPower', 'fxaa', 'textures', 'hdModels', 'shaderWarmup', 'autoUpdate', 'autoBackups', 'shareUsage', 'discordPresence', 'darkMode'];
+const SELECTS = ['buttonPrompts', 'promptPad', 'battleRules', 'widescreen', 'resolution', 'frameRate', 'vsync', 'fullscreenMode', 'exclusiveResolution', 'display', 'msaa', 'anisotropic', 'sharpen', 'brightness', 'aspect', 'presentFilter', 'fsrMode', 'textureLoading', 'renderer', 'hdText', 'expAllShare', 'language', 'battleSpeed', 'fastForward', 'fastForwardSpeed', 'coopHero', 'coopSplit', 'coopPads', 'padMode', 'updateChannel', 'randomizerSeed'];
+const SWITCHES = ['randomizer', 'randomizerStarters', 'randomizerShadow', 'randomizerTrainers', 'randomizerGifts', 'randomizerGen1', 'randomizerGen2', 'randomizerGen3', 'randomizerGen4', 'randomizerPacks', 'randomizerSimilar', 'randomizerNoLegendaries', 'randomizerNoRepeats', 'randomizerBaseForms', 'generation4Pokemon', 'pbrReplaceAll', 'pbrTextures', 'fullscreen', 'hudEdges', 'skipMovies', 'skipBattleAnimations', 'quickMoves', 'quickStatus', 'shinyShadow', 'shinyStarters', 'chooseHero', 'chooseStarters', 'tmNames', 'infiniteTms', 'expAll', 'cstickMove', 'partnerPass', 'coop', 'pokeSpotPool', 'overlay', 'backgroundInput', 'gbaAutoPower', 'fxaa', 'textures', 'hdModels', 'shaderWarmup', 'autoUpdate', 'autoBackups', 'shareUsage', 'discordPresence', 'darkMode'];
 
 // The languages: English, the launcher's packs and any found in the languages folder. One chosen and then
 // removed from the folder stays listed, as the game plays in English without it; so does one this game has no pack
@@ -1394,6 +1394,7 @@ function renderRanges() {
   $('brightness-value').textContent = `${$('brightness').value}%`;
   $('sharpen-value').textContent = Number($('sharpen').value) ? `${$('sharpen').value}%` : 'Off';
   $('battleSpeed-value').textContent = `${Number($('battleSpeed').value).toFixed(1)}×`;
+  $('expAllShare-value').textContent = `${Number($('expAllShare').value)}×`;
 }
 
 // Same as the launcher and Primary, and a monitor chosen in the game's own settings menu (monitor2, ...).
@@ -1422,6 +1423,7 @@ function renderDependents(busy = false) {
   // which controller's prompts Automatic switches to
   $('promptPad').disabled = busy || $('buttonPrompts').value !== 'auto';
   $('battleSpeed').disabled = busy || $('skipBattleAnimations').checked;
+  $('expAllShare').disabled = busy || !$('expAll').checked;
   $('fullscreenMode').disabled = busy || !$('fullscreen').checked;
   // split-screen co-op's choices
   for (const id of ['coopHero', 'coopSplit', 'coopPads']) $(id).disabled = busy || !$('coop').checked;
@@ -2170,9 +2172,9 @@ $('randomizer-reroll').addEventListener('click', async () => {
   } catch (error) { showError(error); }
 });
 $('randomizer-spoilers').addEventListener('click', () => window.colo.randomizerSpoilers().catch(showError));
-for (const key of ['sharpen', 'brightness', 'battleSpeed']) $(key).addEventListener('input', renderRanges);
+for (const key of ['sharpen', 'brightness', 'battleSpeed', 'expAllShare']) $(key).addEventListener('input', renderRanges);
 for (const key of ['buttonPrompts', 'promptPad']) $(key).addEventListener('input', () => { renderPrompts(); renderDependents(); });
-for (const key of ['skipBattleAnimations', 'fullscreen', 'fullscreenMode', 'widescreen', 'presentFilter', 'textures', 'textureLoading', 'coop'])
+for (const key of ['skipBattleAnimations', 'expAll', 'fullscreen', 'fullscreenMode', 'widescreen', 'presentFilter', 'textures', 'textureLoading', 'coop'])
   $(key).addEventListener('input', () => renderDependents());
 window.colo.onLog(appendLog);
 window.colo.onLogReset(resetLog);

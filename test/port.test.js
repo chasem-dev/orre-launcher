@@ -97,7 +97,7 @@ test('Apple Silicon moves off the old default Vulkan once, a later choice stays,
 });
 
 test('settings outside what the game takes fall back', () => {
-  const settings = port.normalizeSettings({ frameRate: 120, resolution: 9, widescreen: '5:4', renderer: 'direct3d', stickDeadzone: 99, display: 'monitor99',
+  const settings = port.normalizeSettings({ frameRate: 90, resolution: 9, widescreen: '5:4', renderer: 'direct3d', stickDeadzone: 99, display: 'monitor99',
     exclusiveResolution: 'big', hdText: 'maybe', padMode: 'all' });
   assert.equal(settings.frameRate, 60);
   assert.equal(settings.resolution, 4);
@@ -128,6 +128,7 @@ test('settings reach the variables the game reads', () => {
     textures: false, fullscreen: true, fullscreenMode: 'exclusive', exclusiveResolution: '1920x1080', display: 'monitor2', skipMovies: true, padMode: 'single',
     rumbleStrength: 0, stickDeadzone: 20, triggerClick: 70, backgroundInput: true, brightness: 150 }), 'disc', '/port');
   assert.deepEqual([env.SMS_GX_BACKEND, env.SMS_GX_SCALE, env.COLO_FPS, env.COLO_WIDESCREEN, env.COLO_WIDESCREEN_HUD], ['opengl', '2', '30', '4:3', 'center']);
+  assert.equal(port.buildEnvironment(port.normalizeSettings({ frameRate: 120 }), '/disc.iso', '/port').COLO_FPS, '120');
   assert.equal(env.SMS_TEXTURE_PACKS, '0');
   assert.deepEqual([env.SMS_FULLSCREEN, env.SMS_FULLSCREEN_TYPE, env.SMS_FULLSCREEN_MODE, env.SMS_DISPLAY], ['exclusive', 'exclusive', '1920x1080', '1']);
   assert.equal(env.COLO_SKIP_MOVIES, '1');
@@ -325,6 +326,47 @@ test('Choose your hero is on unless turned off, in both games', () => {
     assert.equal(env({ chooseHero: false }).COLO_CHOOSE_HERO, '0');
     assert.equal(env({ chooseHero: false }).COLO_PLAYER, undefined, 'the hero is the save\'s, never the launcher\'s');
     assert.equal(env({ chooseHero: false }, 'xd').COLO_CHOOSE_HERO, '0', 'XD asks too');
+  } finally {
+    for (const [key, value] of Object.entries(saved)) if (value !== undefined) process.env[key] = value;
+  }
+});
+
+test('Infinite TMs, Exp All and the C-Stick as the stick are off unless turned on; XD has the first two', () => {
+  const keys = { infiniteTms: 'COLO_INFINITE_TMS', cstickMove: 'COLO_CSTICK_MOVE' };
+  const saved = Object.fromEntries([...Object.values(keys), 'COLO_EXP_ALL'].map(key => [key, process.env[key]]));
+  for (const key of [...Object.values(keys), 'COLO_EXP_ALL']) delete process.env[key];
+  const env = (settings, game) => port.buildEnvironment(port.normalizeSettings(settings), 'disc', '/port', game ? { game } : undefined);
+  try {
+    for (const [setting, key] of Object.entries(keys)) {
+      assert.equal(port.normalizeSettings({})[setting], false, setting);
+      assert.equal(env({})[key], undefined, setting);
+      assert.equal(env({ [setting]: false })[key], undefined, setting);
+      assert.equal(env({ [setting]: true })[key], '1', setting);
+      assert.equal(env({ [setting]: true }, 'xd')[key], setting === 'cstickMove' ? undefined : '1', `XD and ${setting}`);
+    }
+    // Exp All: off unless turned on, and then the rest of the party's share, half unless set
+    assert.equal(port.normalizeSettings({}).expAll, false);
+    assert.equal(port.normalizeSettings({}).expAllShare, 0.5);
+    assert.equal(env({}).COLO_EXP_ALL, undefined);
+    assert.equal(env({ expAll: false, expAllShare: 1 }).COLO_EXP_ALL, undefined);
+    assert.equal(env({ expAll: true }).COLO_EXP_ALL, '0.50');
+    assert.equal(env({ expAll: true }, 'xd').COLO_EXP_ALL, '0.50', 'XD too');
+    assert.equal(env({ expAll: true, expAllShare: '0.25' }).COLO_EXP_ALL, '0.25');
+    assert.equal(env({ expAll: true, expAllShare: 1 }).COLO_EXP_ALL, '1.00');
+    assert.equal(port.normalizeSettings({ expAllShare: 0.33 }).expAllShare, 0.35, 'to a twentieth');
+    assert.equal(port.normalizeSettings({ expAllShare: 3 }).expAllShare, 1);
+    assert.equal(port.normalizeSettings({ expAllShare: 0 }).expAllShare, 0.05);
+    assert.equal(port.normalizeSettings({ expAllShare: 'most' }).expAllShare, 0.5);
+    // a player who turned Exp All on before the slider has only expAll: true saved: it stays on, at 0.5
+    const before = port.normalizeSettings(JSON.parse(JSON.stringify({ expAll: true, infiniteTms: true })));
+    assert.equal(before.expAll, true, 'stays on');
+    assert.equal(before.expAllShare, 0.5, 'at the default share');
+    assert.equal(env({ expAll: true, infiniteTms: true }).COLO_EXP_ALL, '0.50');
+    assert.deepEqual(port.normalizeSettings(before), before, 'and saving it again keeps both');
+    assert.equal(port.normalizeSettings({ ...before, expAllShare: '0.5' }).expAllShare, 0.5, 'the slider saves a string');
+    // one who had it off keeps it off, the slider at 0.5 for when they turn it on
+    assert.equal(port.normalizeSettings({ expAll: false }).expAll, false);
+    assert.equal(port.normalizeSettings({ expAll: false }).expAllShare, 0.5);
   } finally {
     for (const [key, value] of Object.entries(saved)) if (value !== undefined) process.env[key] = value;
   }

@@ -21,8 +21,8 @@
     if (track?.kind === 'sfx') return 'effect';
     if (/silence/i.test(name)) return 'silence';
     if (/\(unused\)/i.test(name)) return 'unused';
-    // a battle's music; not a place or a menu named for one (Mt. Battle, its rest room, Battle Mode's menu, Battle Bingo's board)
-    const place = /^mt\. battle\b|battle mode menu|^battle bingo( - board)?$/i.test(name);
+    // a battle's music; not a place, a menu or a theme named for one (Mt. Battle, its rest room, Battle Mode's menu, Battle Bingo's board, Cipher Admin's Theme)
+    const place = /^mt\. battle\b|battle mode menu|^battle bingo( - board)?$|'s theme$/i.test(name);
     if (/battle|vs\. mode|admin|peon|final fight/i.test(name) && !place && !track?.short) return 'battle';
     if (track?.short) return 'jingle';
     return 'tune';

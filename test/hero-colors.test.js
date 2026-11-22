@@ -62,6 +62,73 @@ test('a texture is sorted by region, repainted only where a colour is chosen, an
   assert.deepEqual(at(7), Array.from(big.rgba.subarray(28, 31)), 'the suit is left as it was');
 });
 
+// A face texture: May's skin all over, with `marks` of other colours painted on as [hex, u0, v0, u1, v1] boxes.
+function face(size, marks) {
+  const rgba = new Uint8Array(size * size * 4);
+  for (let i = 0; i < size * size; i++) rgba.set([0xef, 0xcb, 0x9c, 255], i * 4);
+  for (const [hex, u0, v0, u1, v1] of marks) {
+    const c = [1, 3, 5].map(k => parseInt(hex.slice(k, k + 2), 16));
+    for (let y = Math.round(v0 * size); y < Math.round(v1 * size); y++) for (let x = Math.round(u0 * size); x < Math.round(u1 * size); x++) rgba.set([...c, 255], (y * size + x) * 4);
+  }
+  return { rgba, width: size, height: size };
+}
+
+test('eye colours are the eyes only in the irises: brows and lashes in them keep theirs, specks go with what\'s around them', () => {
+  const regions = colors.hero('may').regions.map(region => region.id);
+  // an iris where May's are, the same blue as a brow above it, and a speck of shirt red in the skin
+  const texture = face(128, [['#4a5573', 0.25, 0.45, 0.3, 0.56], ['#4a5573', 0.2, 0.25, 0.35, 0.27], ['#a42c21', 0.6, 0.8, 0.61, 0.81]]);
+  const { textures: [sorted] } = colors.prepare('may', [texture]);
+  const at = (u, v) => sorted.mask[Math.floor(v * 128) * 128 + Math.floor(u * 128)];
+  assert.equal(sorted.face, true);
+  assert.equal(regions[at(0.27, 0.5)], 'eyes');
+  assert.equal(at(0.27, 0.26), 255, 'a brow in the eye colour is kept as drawn');
+  assert.equal(regions[at(0.6, 0.8)], 'skin', 'a speck takes the region around it');
+});
+
+test('Wes\'s lids, shaded in his eyes\' orange, are skin', () => {
+  const regions = colors.hero('wes').regions.map(region => region.id);
+  const texture = face(128, [['#ce8a18', 0.22, 0.5, 0.3, 0.6], ['#d78039', 0.75, 0.38, 0.85, 0.41]]);
+  const { textures: [sorted] } = colors.prepare('wes', [texture]);
+  const at = (u, v) => regions[sorted.mask[Math.floor(v * 128) * 128 + Math.floor(u * 128)]];
+  assert.equal(at(0.26, 0.55), 'eyes');
+  assert.equal(at(0.8, 0.395), 'skin');
+});
+
+test('lips follow the skin until they have a colour of their own', () => {
+  const texture = face(128, [['#c6554a', 0.4, 0.8, 0.6, 0.82]]);
+  const prepared = colors.prepare('may', [texture]), [sorted] = prepared.textures;
+  const regions = colors.hero('may').regions.map(region => region.id), lip = (0.81 * 128 | 0) * 128 + 64;
+  assert.equal(regions[sorted.mask[lip]], 'lips');
+  const red = i => colors.recolor('may', texture.rgba, sorted, prepared.refs, i)[lip * 4];
+  assert.equal(red({}), 0xc6, 'no colours chosen leaves the lips as drawn');
+  assert.ok(red({ skin: '#5a3018' }) < 0xc6 - 40, 'darker skin, darker lips');
+  assert.ok(colors.effectiveColors('may', prepared.refs, { skin: '#5a3018' }).lips, 'the page shows the colour they follow');
+  const own = colors.recolor('may', texture.rgba, sorted, prepared.refs, { skin: '#5a3018', lips: '#2040ff' });
+  assert.ok(own[lip * 4 + 2] > own[lip * 4], 'lips chosen are their own colour');
+});
+
+test('a dark colour\'s lighter shades get lighter as gently as its darker ones get darker', () => {
+  const out = colors.ramp([0x3a, 0x20, 0x10], 70), L = q => colors.lab(Array.from(out.subarray(q * 3, q * 3 + 3)))[0];
+  const step = Math.round(70 * 2.55);
+  assert.ok(Math.abs((L(step + 10) - L(step)) - (L(step) - L(step - 10))) < 3, 'no steeper above the typical shade than below');
+  assert.ok(L(255) > 90, 'the lightest highlight still reaches white');
+});
+
+test('a lens\'s gradient is left as it is, an HD image of one too, and a small texture of hair is repainted', () => {
+  // A texture of one colour: Michael's hair, at a size
+  const flat = (width, height) => {
+    const rgba = new Uint8Array(width * height * 4);
+    for (let i = 0; i < width * height; i++) rgba.set([0x95, 0x41, 0x2c, 255], i * 4);
+    return { rgba, width, height };
+  };
+  const hair = colors.HEROES.find(hero => hero.id === 'michael').regions.findIndex(region => region.id === 'hair');
+  const lens = flat(32, 32), lensHd = flat(128, 128), strands = flat(24, 64);
+  const [disc, hd, own] = colors.prepare('michael', [lens, lensHd, strands], [lens, lens, strands]).textures;
+  assert.ok(disc.mask.every(region => region === 255));
+  assert.ok(hd.mask.every(region => region === 255), 'the HD image goes by the disc\'s size');
+  assert.ok(own.mask.every(region => region === hair));
+});
+
 test('a hero\'s idle motion is the one the model names, else its first', () => {
   assert.equal(heroLook.idleOf({ motions: [{ index: 2, kind: 'special' }, { index: 1, kind: 'idle' }], animations: [10, 30, 30] }), 1);
   assert.equal(heroLook.idleOf({ motions: [], animations: [10] }), 0);

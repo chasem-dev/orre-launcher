@@ -124,6 +124,12 @@ function numberSetting(value, fallback, lo, hi) {
   return Number.isFinite(number) ? Math.min(hi, Math.max(lo, Math.round(number))) : fallback;
 }
 function choiceSetting(value, choices, fallback) { return choices.includes(value) ? value : fallback; }
+// Exp All's share: what each party Pokémon that didn't battle gets, of what one that battled gets, from 0.05 to 1 in
+// steps of 0.05; half unless set.
+function expAllShareSetting(value) {
+  const share = value === null || value === '' ? NaN : Number(value);
+  return Number.isFinite(share) ? Math.min(1, Math.max(0.05, Math.round(share * 20) / 20)) : 0.5;
+}
 
 // How many times faster a battle's animations play, to a tenth. Launchers before the slider saved
 // 'normal', '2', '4' or 'skip' (Beta also '8'): each keeps its speed, or the fastest left.
@@ -149,7 +155,7 @@ function normalizeSettings(input = {}, platform = process.platform, arch = gameA
     // Battle status panels and title portraits at the screen's edges, or in the 4:3 middle.
     hudEdges: input.hudEdges !== false,
     resolution: [1, 2, 3, 4].includes(Number(input.resolution)) ? Number(input.resolution) : 4,
-    frameRate: [30, 60].includes(Number(input.frameRate)) ? Number(input.frameRate) : 60,
+    frameRate: [30, 60, 120].includes(Number(input.frameRate)) ? Number(input.frameRate) : 60,
     fullscreen: Boolean(input.fullscreen),
     // Borderless (desktop) fullscreen, or exclusive, which switches the display to exclusiveResolution.
     fullscreenMode: choiceSetting(input.fullscreenMode, ['desktop', 'exclusive'], 'desktop'),
@@ -179,6 +185,14 @@ function normalizeSettings(input = {}, platform = process.platform, arch = gameA
     chooseStarters: input.chooseStarters !== false,
     // The bag and shops list a TM by its move (Thunderbolt), its number in a tab over the description. On unless turned off.
     tmNames: input.tmNames !== false,
+    // Teaching a TM leaves it in the bag, as in later games. Off unless turned on: it changes what TMs are worth.
+    infiniteTms: Boolean(input.infiniteTms),
+    // Exp All: the Pokémon that battled get the game's own EXP from a knockout, and the rest of the party expAllShare of
+    // what one of them gets, with a held EXP. SHARE still adding its own share. Off unless turned on.
+    expAll: Boolean(input.expAll),
+    expAllShare: expAllShareSetting(input.expAllShare),
+    // Colosseum: the C-Stick walks and moves menu cursors like the Control Stick, as in XD. Off unless turned on.
+    cstickMove: Boolean(input.cstickMove),
     // Colosseum: Wes walks through Rui in the field instead of pushing her back. On unless turned off.
     partnerPass: input.partnerPass !== false,
     // Split-screen co-op: a second controller's START in the field brings in player 2, with their own camera and half of
@@ -364,6 +378,9 @@ const FEATURE_ENVIRONMENT = {
   shinyStarters: ['COLO_SHINY_STARTERS'],
   starters: ['COLO_CHOOSE_STARTERS'],
   tmNames: ['COLO_TM_NAMES'],
+  infiniteTms: ['COLO_INFINITE_TMS'],
+  expAll: ['COLO_EXP_ALL'],
+  cstickMove: ['COLO_CSTICK_MOVE'],
   partnerPass: ['COLO_PARTNER_PASS'],
   pokeSpots: ['COLO_POKESPOT_POOL'],
   coop: ['COLO_COOP', 'COLO_COOP_HERO', 'COLO_COOP_SPLIT', 'COLO_COOP_PADS'],
@@ -427,6 +444,9 @@ function buildEnvironment(settings, disc, root, { customTextures = null, pbrText
   if (settings.shinyStarters === false) env.COLO_SHINY_STARTERS = '0';
   if (settings.chooseStarters === false) env.COLO_CHOOSE_STARTERS = '0';
   if (settings.tmNames === false) env.COLO_TM_NAMES = '0';
+  if (settings.infiniteTms) env.COLO_INFINITE_TMS = '1';
+  if (settings.expAll) env.COLO_EXP_ALL = settings.expAllShare.toFixed(2);
+  if (settings.cstickMove) env.COLO_CSTICK_MOVE = '1';
   if (settings.partnerPass === false) env.COLO_PARTNER_PASS = '0';
   if (settings.pokeSpotPool === false) env.COLO_POKESPOT_POOL = '0';
   if (settings.chooseHero === false) env.COLO_CHOOSE_HERO = '0';
@@ -642,8 +662,11 @@ function pbrMakesCries(root) { return fs.existsSync(path.join(root, 'tools', 'pb
 // before skips the chunk, so Replace all models waits for an update.
 function playsOwnModels(root) { return fs.existsSync(path.join(root, 'host', 'packlooks.c')); }
 function playsPackCries(root) { return fs.existsSync(path.join(root, 'host', 'packcries.c')); }
-function pbrModelsCommand(root, disc, work, numbers, platform = process.platform, environment = process.env) {
+// gamecube: the player's own Colosseum or XD disc, which the converter takes the Pokémon's fire, gas and sparkles from
+// (tools/pbr2pkx/particles.py); an older converter doesn't read it
+function pbrModelsCommand(root, disc, work, numbers, platform = process.platform, environment = process.env, gamecube = null) {
   const args = [pbrModelsScript(root), disc, work, ...numbers.map(String)];
+  if (gamecube) environment = { ...environment, PBR2PKX_GAMECUBE_DISC: gamecube };
   if (platform !== 'win32') return { command: 'python3', args, cwd: path.dirname(args[0]), env: environment };
   const { msys } = msysBash(environment);
   return { command: path.join(msys, 'mingw64', 'bin', 'python.exe'), args, cwd: path.dirname(args[0]), env: msysEnvironment(msys, environment) };

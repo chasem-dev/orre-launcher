@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: colo-texture:; object-src 'none'; base-uri 'none'">
   <title>Orre Launcher</title>
+  <script src="jukebox-window.js"></script>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -168,7 +169,21 @@
         </div>
       </section>
       <section id="page-jukebox" class="page sheet jukebox-page" aria-labelledby="jukebox-title" hidden>
-        <div class="modal-head"><div><h1 id="jukebox-title">Jukebox</h1><p id="jukebox-summary">The game's music and sound effects, played from your disc. It keeps playing while you use the rest of the launcher.</p></div></div>
+        <div id="jukebox-popped" class="jukebox-popped-note" hidden>
+          <h1>The Jukebox is open in its own window</h1>
+          <p>The music plays from there, and stops when that window is closed.</p>
+          <button id="jukebox-bring-back" type="button" class="solid">Bring it back here</button>
+        </div>
+        <div id="jukebox-chamber" class="jukebox-chamber" hidden>
+          <div class="jukebox-chamber-stage"><canvas id="jukebox-chamber-canvas" class="jukebox-chamber-canvas" aria-label="The Purification Chamber, with Ludicolo dancing to the music"></canvas><div id="jukebox-chamber-flash" class="jukebox-chamber-flash" aria-hidden="true"></div><div id="jukebox-chamber-dim" class="jukebox-chamber-dim" aria-hidden="true"></div><p id="jukebox-chamber-status" class="jukebox-chamber-status" role="status" hidden></p><div id="jukebox-chamber-meter" class="jukebox-chamber-meter" aria-hidden="true"><i></i></div></div>
+          <button id="jukebox-chamber-back" type="button" class="jukebox-chamber-back" hidden title="Bring the song list back (Esc)"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M2 10s3-5.5 8-5.5S18 10 18 10s-3 5.5-8 5.5S2 10 2 10z"/><circle cx="10" cy="10" r="2.4"/></svg><span>Show overlay</span><kbd>Esc</kbd></button>
+        </div>
+        <div class="modal-head"><div><h1 id="jukebox-title">Jukebox</h1><p id="jukebox-summary">The game's music and sound effects, played from your disc. It keeps playing while you use the rest of the launcher.</p></div>
+          <div class="jukebox-viz" role="group" aria-label="Visualizer">
+            <label class="jukebox-viz-switch" title="The Purification Chamber, where Ludicolo and Miror B. dance to the music, behind the songs"><input id="jukebox-chamber-toggle" type="checkbox" role="switch" checked><i aria-hidden="true"></i><span>Visualizer</span></label>
+            <button id="jukebox-popout" type="button" class="jukebox-viz-hide" title="Open the Jukebox in a window of its own, to leave on another screen"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M8 4H4.5A1.5 1.5 0 0 0 3 5.5v10A1.5 1.5 0 0 0 4.5 17h10a1.5 1.5 0 0 0 1.5-1.5V12M11 3h6v6M17 3l-8 8"/></svg><span>Pop out</span></button>
+            <button id="jukebox-chamber-watch" type="button" class="jukebox-viz-hide" title="Clear the song list away to watch the visualizer (Esc brings it back)"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M2 10s3-5.5 8-5.5S18 10 18 10s-3 5.5-8 5.5S2 10 2 10z"/><circle cx="10" cy="10" r="2.4"/><path d="M3 17 17 3"/></svg><span>Hide overlay</span></button>
+          </div></div>
         <div id="jukebox-tabs" class="jukebox-tabs" role="tablist" aria-label="Kind of sound" hidden>
           <button id="jukebox-tab-music" class="jukebox-tab" role="tab" type="button" aria-selected="true">Music</button>
           <button id="jukebox-tab-sfx" class="jukebox-tab" role="tab" type="button" aria-selected="false">Sound effects</button>
@@ -241,7 +256,8 @@
       </section>
       <section id="page-pokemon" class="page sheet pokedex-page pokemon-page" aria-labelledby="pokemon-title" hidden>
         <div class="modal-head"><div><h1 id="pokemon-title">Pokémon</h1><p id="pokemon-summary">Your party and PC boxes, from your save.</p></div>
-          <div class="pokemon-head-actions"><span id="pokemon-source" class="badge" hidden></span><button class="subtle" id="pokemon-refresh" title="Read the save again and check on your trades">Refresh</button></div></div>
+          <div class="pokemon-head-actions"><span id="pokemon-source" class="badge" hidden></span><button class="subtle import-button" id="pokemon-import" type="button" popovertarget="import-menu" aria-haspopup="menu" aria-expanded="false" title="Copy Pokémon from a GBA or DS game's save into this one">Import<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5.5 8l4.5 4.5L14.5 8"/></svg></button><button class="subtle" id="pokemon-refresh" title="Read the save again and check on your trades">Refresh</button></div></div>
+        <div id="import-menu" class="play-menu import-menu" popover role="menu" aria-label="Import from"><button id="import-gba" class="play-menu-item" role="menuitem" type="button"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="2.5" y="5.5" width="15" height="9" rx="2.5"/><path d="M5.5 10h3M7 8.5v3M13 9.2h.01M14.6 10.8h.01"/></svg><span><strong>From a GBA save</strong><small>Ruby, Sapphire, Emerald, FireRed, LeafGreen · .sav or .srm</small></span></button><button id="import-ds" class="play-menu-item" role="menuitem" type="button"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="4.5" y="2.5" width="11" height="6.5" rx="1.5"/><rect x="4.5" y="11" width="11" height="6.5" rx="1.5"/></svg><span><strong>From a DS save</strong><small id="import-ds-detail">Diamond, Pearl, Platinum · .sav, .srm or .dsv</small></span></button><p>A copy comes over: the Pokémon stays in that game's save too, and the file isn't changed.</p></div>
         <div class="pokemon-body">
           <div class="pokemon-browse">
             <div class="pokemon-tabs" role="tablist" aria-label="Party or boxes"><button id="pokemon-tab-party" class="pokemon-tab" role="tab" type="button" aria-selected="true">Party</button><button id="pokemon-tab-boxes" class="pokemon-tab" role="tab" type="button" aria-selected="false">Boxes</button></div>
@@ -255,6 +271,7 @@
             <section id="pokemon-detail" class="pokemon-detail" hidden>
               <div class="pokemon-detail-head"><div id="pokemon-detail-sprite" class="pokemon-detail-sprite"></div><div><h2 id="pokemon-detail-name"></h2><p id="pokemon-detail-meta" class="helper"></p><div id="pokemon-detail-badges" class="pokemon-detail-badges"></div></div></div>
               <div id="pokemon-heart" class="pokemon-heart" hidden><div class="pokemon-heart-bar"><i id="pokemon-heart-fill"></i></div><small id="pokemon-heart-text"></small></div>
+              <div id="pokemon-friendship" class="pokemon-heart pokemon-friendship" hidden><div class="pokemon-heart-bar"><i id="pokemon-friendship-fill"></i></div><small id="pokemon-friendship-text"></small></div>
               <button id="pokemon-trade" class="solid pokemon-trade" type="button" hidden>Send to Shadowtrade</button>
               <p id="pokemon-trade-note" class="helper"></p>
             </section>
@@ -276,7 +293,7 @@
             </section>
             <section class="shadowtrade-panel" aria-labelledby="shadowtrade-title">
               <h2 id="shadowtrade-title">Shadowtrade</h2>
-              <p class="helper">Trade a Shadow Pokémon with another player, sight unseen. Yours leaves your save; another player's Shadow Pokémon comes back, still to be purified. Only ones your save can take come to you.</p>
+              <p class="helper">Trade a Shadow Pokémon with another player, sight unseen, in Pokémon Colosseum or Pokémon XD. Yours leaves your save; another player's Shadow Pokémon comes back, still to be purified. One from the other game arrives as one of your story's Shadow Pokémon, its heart gauge just as open. Only ones your save can take come to you.</p>
               <div id="shadowtrade-trades" class="shadowtrade-trades"></div>
               <p id="shadowtrade-none" class="helper">No trades on their way.</p>
               <h3 id="shadowtrade-history-title" class="shadowtrade-history-title" hidden>Recent trades</h3>
@@ -408,6 +425,9 @@
               <label data-feature="playAs" class="switch"><span><strong>Choose your hero</strong><small>A New Game asks who you will play as before you enter your name: the game's own hero (Wes, or Michael in XD), or Brendan, May, Red or Leaf, the Game Boy Advance heroes Colosseum's Mt. Battle shows, and in XD Wes too. Your hero walks the story and battles in the game's hero's place, and the save remembers who you chose. The opening, the movies and the P★DA still show the game's own hero. Online, you battle as the hero you choose on the Customize page.</small></span><input id="chooseHero" type="checkbox"><i></i></label>
               <label data-feature="starters" class="switch"><span><strong id="choose-starters-title">Choose starters</strong><small id="choose-starters-note">After you enter your name for a New Game, the game asks whether to begin with Espeon and Umbreon. Say No to pick any two Pokémon instead, at the same levels. A randomized game that randomizes the starters doesn't ask.</small></span><input id="chooseStarters" type="checkbox"><i></i></label>
               <label data-feature="tmNames" class="switch"><span><strong>TMs by move name</strong><small>The bag and shops list a TM by the move it teaches, such as Thunderbolt, instead of TM24. Its number shows above the description box.</small></span><input id="tmNames" type="checkbox"><i></i></label>
+              <label data-feature="infiniteTms" class="switch"><span><strong>Infinite TMs</strong><small>Teaching a TM doesn't use it up, as in later Pokémon games, so you can teach it to as many Pokémon as you like.</small></span><input id="infiniteTms" type="checkbox"><i></i></label>
+              <label data-feature="expAll" class="switch"><span><strong>Exp All</strong><small>The Pokémon that battled a foe get the same EXP as in the original game, and the rest of your party gets some too, as much as you set below. A Pokémon holding an EXP. SHARE still gets its share on top, as in the original game. The EXP shows in one panel for your party, as in Pokémon Scarlet and Violet, with each bar filling and levels going up; any new move is still offered after it. Fainted Pokémon get none, and Shadow Pokémon save theirs for when they're purified.</small></span><input id="expAll" type="checkbox"><i></i></label>
+              <label data-feature="expAll" class="field range-field"><span><strong>Exp All for the rest of the party</strong><output id="expAllShare-value" for="expAllShare">0.5×</output><small>How much EXP each Pokémon that didn't battle gets, of what one that battled got: 0.5× is half, 1× the same.</small></span><input id="expAllShare" type="range" min="0.05" max="1" step="0.05" aria-label="Exp All for the rest of the party"></label>
               <label data-feature="partnerPass" class="switch"><span><strong>Walk through Rui</strong><small>Wes walks straight through Rui instead of pushing her back a step at a time, so turning round on a narrow walkway is easy. She still follows him as before.</small></span><input id="partnerPass" type="checkbox"><i></i></label>
               <label data-feature="pokeSpots" class="switch"><span><strong>More Poké Spot Pokémon</strong><small>Each Poké Spot draws from about 60 kinds of Pokémon instead of its own three, sorted by type: Normal, Ground, Rock, Fire and Flying at the Rock spot; Water, Grass, Bug and Electric at the Oasis; Poison, Ghost, Dark, Psychic, Steel, Ice, Dragon and Fighting in the Cave. Only first forms and Pokémon that don't evolve, and no legendary Pokémon. Pokémon that are easy to catch come more often, and the spot's own three most of all. Generation 4 Pokémon and your Pokémon packs' own come too when you have them. Munchlax and Bonsly come as before. Turn it off to keep each spot's own three.</small></span><input id="pokeSpotPool" type="checkbox"><i></i></label>
             </div>
@@ -472,7 +492,7 @@
             </div>
             <h2 class="group-title">Frame rate</h2>
             <div class="settings-group">
-              <label class="field"><span>Frame rate</span><select id="frameRate"><option value="30">30 fps (GameCube native)</option><option value="60">60 fps (default)</option></select></label>
+              <label class="field"><span>Frame rate</span><select id="frameRate"><option value="30">30 fps (GameCube native)</option><option value="60">60 fps (default)</option><option value="120">120 fps (optional)</option></select></label>
               <label class="field"><span>V-Sync<small>Stops tearing. Adaptive only tears when a frame is late, instead of stuttering.</small></span><select id="vsync"><option value="off">Off</option><option value="on">On</option><option value="adaptive">Adaptive</option></select></label>
               <label class="switch"><span><strong>Controls overlay</strong><small>Your controls and the frame rate over the game; the backtick key (`) shows and hides it.</small></span><input id="overlay" type="checkbox"><i></i></label>
             </div>
@@ -531,6 +551,7 @@
               <label class="field range-field"><span><strong>Stick dead zone</strong><output id="stickDeadzone-value" for="stickDeadzone">10%</output><small>How far a controller's sticks move before the game sees them. Raise it if you walk by yourself, lower it for small movements to count.</small></span><input id="stickDeadzone" type="range" min="0" max="50" step="1" aria-label="Stick dead zone"></label>
               <label class="field range-field"><span><strong>Trigger click</strong><output id="triggerClick-value" for="triggerClick">85%</output><small>How far an analog trigger goes before it counts as L or R pressed.</small></span><input id="triggerClick" type="range" min="10" max="100" step="5" aria-label="Trigger click"></label>
               <label class="field range-field"><span><strong>Rumble strength</strong><output id="rumbleStrength-value" for="rumbleStrength">100%</output><small>How hard your controller rumbles; 0% turns rumble off.</small></span><input id="rumbleStrength" type="range" min="0" max="100" step="5" aria-label="Rumble strength"></label>
+              <label data-feature="cstickMove" class="switch"><span><strong>C-Stick moves like the Control Stick</strong><small>Walk and move menu cursors with the C-Stick (a controller's right stick) while the Control Stick is still, as in Pokémon XD, for playing one-handed. Where the game uses the C-Stick itself, such as to turn things in the P★DA, it does that instead.</small></span><input id="cstickMove" type="checkbox"><i></i></label>
               <label class="field"><span>Controllers<small>Each controller is the next free player as it is plugged in, for Battle Mode. The keyboard is player 1.</small></span><select id="padMode"><option value="players">One player each</option><option value="single">All player 1</option></select></label>
               <label class="switch"><span><strong>Controller works in the background</strong><small>Keeps your controller playing while another window has focus, such as with the game on a second screen. Off, the game ignores input until you click back into it.</small></span><input id="backgroundInput" type="checkbox"><i></i></label>
             </div>
@@ -666,6 +687,23 @@
       <div class="modal-head"><div><p class="eyebrow">ONLINE TRADE</p><h1 id="trade-stats-title">Every stat</h1><p>Both Pokémon as the games keep them.</p></div><button class="modal-close" data-close-modal aria-label="Close">×</button></div>
       <div class="modal-body"><div id="trade-stats-sheets" class="trade-stats-sheets"></div></div>
     </dialog>
+    <dialog id="save-import" class="launcher-modal save-import" aria-labelledby="save-import-title">
+      <div class="modal-head"><div><p class="eyebrow" id="save-import-kind">IMPORT</p><h1 id="save-import-title">Import</h1><p id="save-import-file"></p></div><button class="modal-close" data-close-modal aria-label="Close">×</button></div>
+      <div class="save-import-body">
+        <div class="save-import-browse">
+          <div class="save-import-bar">
+            <div class="pokemon-tabs" role="tablist" aria-label="Party or boxes"><button id="save-import-tab-party" class="pokemon-tab" role="tab" type="button" aria-selected="true">Party</button><button id="save-import-tab-boxes" class="pokemon-tab" role="tab" type="button" aria-selected="false">Boxes</button></div>
+            <div id="save-import-box-bar" class="pokemon-box-bar" hidden><button id="save-import-box-prev" class="subtle" type="button" aria-label="Previous box">‹</button><select id="save-import-box" aria-label="Box"></select><button id="save-import-box-next" class="subtle" type="button" aria-label="Next box">›</button></div>
+            <button id="save-import-all" class="subtle save-import-all" type="button">Select all here</button>
+          </div>
+          <div id="save-import-grid" class="pokemon-grid" role="listbox" aria-multiselectable="true" aria-label="Pokémon to bring"></div>
+          <p id="save-import-empty" class="helper pokemon-empty" hidden></p>
+        </div>
+        <aside id="save-import-detail" class="save-import-detail" aria-live="polite"></aside>
+      </div>
+      <p id="save-import-status" class="pokemon-status save-import-status" role="status" aria-live="polite" hidden></p>
+      <div class="actions"><p id="save-import-note" class="helper save-import-note"></p><button class="subtle" data-close-modal>Close</button><button id="save-import-go" class="solid" type="button" disabled>Bring them over</button></div>
+    </dialog>
     <dialog id="shadowtrade-confirm" class="launcher-modal shadowtrade-confirm" aria-labelledby="shadowtrade-confirm-title">
       <div class="modal-head"><div><p class="eyebrow">SHADOWTRADE</p><h1 id="shadowtrade-confirm-title">Send <span id="shadowtrade-confirm-name"></span>?</h1><p>Another player gets it, and you get a Shadow Pokémon someone sent.</p></div><button class="modal-close" data-close-modal aria-label="Close">×</button></div>
       <div class="modal-body">
@@ -778,6 +816,9 @@
   <script src="team-builder.js"></script>
   <script src="online-versions.js"></script>
   <script src="online-page.js"></script>
+  <script src="jukebox-beat.js"></script>
+  <script src="jukebox-tempo.js"></script>
+  <script type="module" src="jukebox-chamber.js"></script>
   <script src="jukebox-cover.js"></script>
   <script src="jukebox-playlists.js"></script>
   <script src="jukebox-page.js"></script>

@@ -24,6 +24,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const telemetry = require('./telemetry');
 const savePokemon = require('./save-pokemon');
+const shadowConvert = require('./shadow-convert');
 
 const STATE_VERSION = 1;
 const HISTORY = 30;
@@ -318,7 +319,7 @@ class Shadowtrade {
 
   view() {
     const each = entry => ({ tradeId: entry.tradeId, game: entry.game, pool: entry.pool, stage: entry.stage, sent: entry.sent.summary,
-      received: entry.received ? { ...entry.received.summary, from: entry.received.from, returned: Boolean(entry.received.returned) } : null,
+      received: entry.received ? { ...entry.received.summary, from: entry.received.from, crossed: entry.received.crossed || null, returned: Boolean(entry.received.returned) } : null,
       placedAt: entry.placedAt || null, message: entry.message || null, createdAt: entry.createdAt });
     return { trades: this.state.journal.map(each), history: this.state.history.slice(0, HISTORY), busy: Boolean(this.busy) };
   }
@@ -403,7 +404,7 @@ class Shadowtrade {
     let trade = null, problem;
     try {
       const reply = await this.post('offer', { pool: entry.pool, tradeId: entry.tradeId, trainerName: entry.trainerName, accepts: entry.accepts,
-        later: Boolean(this.takesLater(entry.game)),
+        later: Boolean(this.takesLater(entry.game)), crossplay: true,
         pokemon: { data: entry.sent.data, ...(entry.sent.record ? { record: entry.sent.record } : {}) } });
       if (reply?.trade?.tradeId === entry.tradeId && ['waiting', 'received'].includes(reply.trade.status)) trade = reply.trade;
       else problem = 'the server didn\'t confirm it';
@@ -448,8 +449,7 @@ class Shadowtrade {
     if (trade.status === 'waiting' && entry.stage === 'taken') entry.stage = 'waiting';
     if (trade.status === 'received' && trade.received && ['taken', 'waiting'].includes(entry.stage)) {
       entry.stage = 'received';
-      entry.received = { data: trade.received.pokemon.data, record: trade.received.pokemon.record || null, from: trade.received.from,
-        summary: summary(trade.received) };
+      entry.received = this.receivedFor(entry, trade.received);
     }
     if (trade.status === 'cancelled' && trade.returned && ['taken', 'waiting'].includes(entry.stage)) {
       entry.stage = 'received';
@@ -458,11 +458,32 @@ class Shadowtrade {
     }
   }
 
+  // A Pokémon the server matched this trade with, for the journal. One from the other game (the pools are shared:
+  // received.game) is made this game's here, once (shadow-convert.js), so the journal and what the player sees have
+  // this game's Pokémon; if that can't be done, it's kept as it came, and deliver says why.
+  receivedFor(entry, received) {
+    const raw = { data: received.pokemon.data, record: received.pokemon.record || null, from: received.from, summary: summary(received) };
+    if (!received.game || received.game === entry.game) return raw;
+    try {
+      const later = Boolean(this.takesLater(entry.game));
+      const made = shadowConvert.shadowFor(received.game, { data: unb64(received.pokemon.data), record: received.pokemon.record ? unb64(received.pokemon.record) : null },
+        entry.game, { laterPokemon: later, laterMoves: later });
+      const at = entry.game === 'xd' ? savePokemon.XD.at : savePokemon.COLOSSEUM.at, d = made.data;
+      const trainer = d.readUInt32BE(at.trainer), rnd = d.readUInt32BE(at.rnd);
+      const shiny = (((trainer >>> 16) ^ (trainer & 0xffff) ^ (rnd >>> 16) ^ (rnd & 0xffff)) >>> 0) < 8;
+      return { data: b64(made.data), record: made.record ? b64(made.record) : null, from: received.from, crossed: received.game,
+        summary: { ...summary(received), species: d.readUInt16BE(at.species), shadowId: made.storyId, level: d[at.level], shiny } };
+    } catch (error) {
+      return { ...raw, crossed: received.game, problem: error.message };
+    }
+  }
+
   // Puts a received Pokémon into the save, then tells the server it's there.
   async deliver(entry, access) {
     if (!access) return;
     let checked;
     try {
+      if (entry.received.problem) throw new Error(entry.received.problem);
       checked = checkReceived(entry.game, { pokemon: { data: entry.received.data, record: entry.received.record } },
         { returned: Boolean(entry.received.returned), later: Boolean(this.takesLater(entry.game)) });
     } catch (error) {
@@ -518,7 +539,7 @@ class Shadowtrade {
     }
     this.state.journal = this.state.journal.filter(each => each !== entry);
     this.state.history.unshift({ tradeId: entry.tradeId, game: entry.game, sent: entry.sent.summary, received: entry.received.summary,
-      from: entry.received.from, returned: Boolean(entry.received.returned), placedAt: entry.placedAt, at: Date.now() });
+      from: entry.received.from, crossed: entry.received.crossed || null, returned: Boolean(entry.received.returned), placedAt: entry.placedAt, at: Date.now() });
     this.state.history = this.state.history.slice(0, HISTORY);
     this.save();
   }
@@ -550,7 +571,7 @@ class Shadowtrade {
       }
       if (this.state.journal.some(entry => entry.stage === 'waiting')) {
         try {
-          const reply = await this.post('status', { accepts, later });
+          const reply = await this.post('status', { accepts, later, crossplay: true });
           for (const trade of reply.trades || []) {
             const entry = this.state.journal.find(each => each.tradeId === trade.tradeId);
             if (entry) this.apply(entry, trade);

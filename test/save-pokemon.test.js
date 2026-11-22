@@ -13,10 +13,10 @@ const sp = require('../src/save-pokemon');
 const utf16 = (bytes, offset, value) => Buffer.from(value, 'utf16le').swap16().copy(bytes, offset);
 const OT = 0xae3b618b;
 
-function colosseumPokemon({ species, rnd = 1, trainer = OT, nickname = 'MON', level = 30, hp = 50, egg = false, shadowId = 0, heart = -100 }) {
+function colosseumPokemon({ species, rnd = 1, trainer = OT, nickname = 'MON', level = 30, hp = 50, egg = false, shadowId = 0, heart = -100, friendship = 70 }) {
   const p = Buffer.alloc(0x138);
   p.writeUInt16BE(species, 0); p.writeUInt32BE(rnd, 4); p.writeUInt32BE(trainer, 0x14); utf16(p, 0x2e, nickname);
-  p[0x60] = level; p.writeUInt16BE(hp, 0x8a); p.writeUInt16BE(hp, 0x8c); p[0xcb] = egg ? 1 : 0;
+  p[0x60] = level; p.writeUInt16BE(hp, 0x8a); p.writeUInt16BE(hp, 0x8c); p.writeUInt16BE(friendship, 0xb0); p[0xcb] = egg ? 1 : 0;
   p.writeUInt16BE(shadowId, 0xd8); p.writeInt32BE(heart, 0xdc);
   return p;
 }
@@ -54,7 +54,7 @@ function colosseumCard(dir, copies, extra = null) {
 
 const folder = t => { const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'colo-savepokemon-')); t.after(() => fs.rmSync(dir, { recursive: true, force: true })); return dir; };
 
-const UMBREON = colosseumPokemon({ species: 197, rnd: 0x372407cb, nickname: 'UMBREON' });
+const UMBREON = colosseumPokemon({ species: 197, rnd: 0x372407cb, nickname: 'UMBREON', friendship: 255 });
 const ESPEON = colosseumPokemon({ species: 196, rnd: 0x11, nickname: 'ESPEON' });
 const MAKUHITA = colosseumPokemon({ species: 296, rnd: 0x1234, nickname: 'MAKUHITA', shadowId: 1, heart: 1500 });
 const BAYLEEF = colosseumPokemon({ species: 153, rnd: 0x99, nickname: 'BAYLEEF', shadowId: 2, heart: 2000, trainer: 0x5555 });
@@ -69,6 +69,7 @@ test('reads a Colosseum save: party, boxes, Shadow flags and gauges', t => {
   assert.equal(save.boxes.length, 3);
   assert.equal(save.boxes[1].name, 'BOX2');
   assert.equal(save.boxes[1].pokemon[4].nickname, 'ESPEON');
+  assert.deepEqual([save.party[0].friendship, save.boxes[1].pokemon[4].friendship], [255, 70]);
   const makuhita = save.party[1];
   assert.equal(makuhita.shadow, true);
   assert.equal(makuhita.shadowId, 1);
@@ -207,9 +208,9 @@ test('a save takes every story id while it has an entry free', t => {
 // ---- XD ----
 
 const XD_OT = 0xd183a6d5;
-function xdPokemon({ species, rnd = 7, trainer = XD_OT, nickname = 'EEVEE', hp = 30, shadowId = 0 }) {
+function xdPokemon({ species, rnd = 7, trainer = XD_OT, nickname = 'EEVEE', hp = 30, shadowId = 0, friendship = 70 }) {
   const p = Buffer.alloc(0xc4);
-  p.writeUInt16BE(species, 0); p.writeUInt16BE(hp, 4); p[0x11] = 10; p.writeUInt32BE(trainer, 0x24); p.writeUInt32BE(rnd, 0x28);
+  p.writeUInt16BE(species, 0); p.writeUInt16BE(hp, 4); p.writeUInt16BE(friendship, 6); p[0x11] = 10; p.writeUInt32BE(trainer, 0x24); p.writeUInt32BE(rnd, 0x28);
   utf16(p, 0x4e, nickname); p.writeUInt16BE(hp, 0x90); p.writeUInt16BE(shadowId, 0xba);
   return p;
 }
@@ -248,12 +249,13 @@ const TEDDIURSA = xdPokemon({ species: 216, rnd: 0x77, nickname: 'TEDDIURSA', sh
 
 test('reads an XD save, its Shadow records and the rule for what it takes', t => {
   const dir = folder(t);
-  xdCard(dir, { party: [EEVEE, TEDDIURSA], boxes: { '2:3': xdPokemon({ species: 25, rnd: 3, nickname: 'PIKACHU' }) },
+  xdCard(dir, { party: [EEVEE, TEDDIURSA], boxes: { '2:3': xdPokemon({ species: 25, rnd: 3, nickname: 'PIKACHU', friendship: 230 }) },
     records: { 1: { status: 3, where: 1, heart: 1200, species: 216 }, 2: { status: 2, species: 217 }, 3: { status: 3, where: 5 }, 4: { status: 4 }, 5: { status: 1 } } });
   const save = sp.readCard(dir, 'xd');
   assert.equal(save.trainer, 'MICHAEL');
   assert.equal(save.boxes.length, 8);
   assert.equal(save.boxes[2].pokemon[3].nickname, 'PIKACHU');
+  assert.deepEqual([save.party[0].friendship, save.boxes[2].pokemon[3].friendship], [70, 230]);
   assert.equal(save.party[1].shadow, true);
   assert.equal(save.party[1].heart, 1200);
   assert.equal(sp.offerProblem(save, save.party[1]), null);

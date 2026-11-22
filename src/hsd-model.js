@@ -134,10 +134,10 @@ function readTexture(dat, at, textures, cache) {
   }
   const data = dat.data.subarray(pixels, pixels + gx.textureSize(format, width, height)), rgba = gx.decode(format, width, height, data, palette, paletteFormat);
   // `disc` is the texture as the disc has it, for finding its HD replacement (texture-pack-lookup.js); `image` is its
-  // HSD_ImageDesc's offset in the model's data (hero-bake.js puts other texels there). `mipmap`: whether the game samples
+  // HSD_ImageDesc's offset in the model's data (hero-bake.js puts other texels there), `pixels` its texels'. `mipmap`: whether the game samples
   // it with mipmaps (the HSD_ImageDesc's flag); without, HSD_TObjSetup keeps the base level only.
   const index = rgba ? textures.push({ width, height, rgba, wrapS: dat.u32(at + 0x34), wrapT: dat.u32(at + 0x38), mipmap: dat.u32(image + 0x0c) !== 0,
-    disc: { data, format, width, height, palette, image } }) - 1 : -1;
+    disc: { data, format, width, height, palette, image, pixels } }) - 1 : -1;
   cache.set(key, index);
   return index;
 }
@@ -732,14 +732,55 @@ function readHeader(pkx, animationCount) {
   return header;
 }
 
+// The images the model's texture animations swap in (each animation's table of them: a trainer's face as it blinks),
+// added to `textures` with `animated` set: their texels once, with every HSD_ImageDesc that points at them in
+// `disc.also` (a texture already read gets the animations' ones there too). Nothing draws them.
+function readAnimatedImages(dat, set, textures) {
+  const byPixels = new Map();
+  textures.forEach((texture, i) => { if (texture.disc && !byPixels.has(texture.disc.pixels)) byPixels.set(texture.disc.pixels, i); });
+  const seen = new Set();
+  const add = image => {
+    if (seen.has(image)) return;
+    seen.add(image);
+    const pixels = dat.pointer(image), width = dat.u16(image + 4), height = dat.u16(image + 6), format = dat.u32(image + 8);
+    if (!pixels || !width || !height) return;
+    const known = byPixels.get(pixels);
+    if (known !== undefined) {
+      const { disc } = textures[known];
+      if (disc.image !== image) (disc.also ||= []).push(image);
+      return;
+    }
+    const data = dat.data.subarray(pixels, pixels + gx.textureSize(format, width, height)), rgba = gx.decode(format, width, height, data, null, 0);
+    if (!rgba) return;
+    byPixels.set(pixels, textures.push({ width, height, rgba, wrapS: 0, wrapT: 0, mipmap: dat.u32(image + 0x0c) !== 0, animated: true,
+      disc: { data, format, width, height, palette: null, image, pixels } }) - 1);
+  };
+  // The material animation's tree (one per clip): each joint's list of display objects' animations, each with its
+  // texture animations (HSD_TexAnimDesc: next, texture map, track, image table at 0x0C, palette table, image count at 0x14)
+  const walk = start => {
+    for (let anim = start; anim; anim = dat.pointer(anim + 4)) {
+      for (let item = dat.pointer(anim + 8); item; item = dat.pointer(item))
+        for (let texture = dat.pointer(item + 8); texture; texture = dat.pointer(texture)) {
+          const table = dat.pointer(texture + 0x0c), count = dat.u16(texture + 0x14);
+          if (!table || dat.u32(texture + 0x10)) continue;  // a palette swap: not an image of its own
+          for (let k = 0; k < count; k++) { const image = dat.pointer(table + k * 4); if (image) add(image); }
+        }
+      walk(dat.pointer(anim));
+    }
+  };
+  for (const root of dat.list(dat.pointer(set + 8))) walk(root);
+}
+
 // The model as model-rig.js draws it, with each animation's length, its battle motions, the eye animations the
-// game plays over them (sleep, wake and blink), and its shiny filter.
-function parseModel(pkx) {
+// game plays over them (sleep, wake and blink), and its shiny filter. With `animated`, its textures include the images
+// its texture animations swap in (readAnimatedImages), for repainting them with the rest.
+function parseModel(pkx, { animated = false } = {}) {
   const { dat, set, firstJoint } = open(pkx);
   const { joints, byOffset } = readJoints(dat, firstJoint);
   const table = makeDrawTable(), textures = [];
   const { shapes, materials } = readShapes(dat, { joints, byOffset }, table, textures);
   if (!shapes.length) throw new Error('A Pokémon\'s model has nothing to draw.');
+  if (animated) readAnimatedImages(dat, set, textures);
   const animations = readClipRoots(dat, set).map(root => Math.ceil(clipLength(dat, root)));
   return { joints: joints.map(({ parent, flags, scale, rotation, translation, constraint }) => ({ parent, classicalScale: Boolean(flags & CLASSICAL_SCALE), scale, rotation, translation,
       // the limb it is part of and the joints it follows, which model-rig.js poses as the game does

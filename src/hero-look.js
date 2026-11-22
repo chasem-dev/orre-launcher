@@ -86,6 +86,7 @@ function createReader(rom, game = 'colosseum') {
     const hero = colors.heroIn(id, game);
     if (!hero) throw new Error('There\'s no such hero.');
     const model = hsd.parseModel(fileOf(id, kind));
+    const discs = model.textures.map(({ width, height }) => ({ width, height }));
     let hd = 0;
     for (const texture of model.textures) {
       const found = index && texturePackLookup.findReplacement(index, texture.disc);
@@ -97,7 +98,7 @@ function createReader(rom, game = 'colosseum') {
         hd++;
       } catch (_) { /* the disc's, then */ }
     }
-    return { id, kind, label: hero.label, model, hd, ...colors.prepare(id, model.textures) };
+    return { id, kind, label: hero.label, model, hd, ...colors.prepare(id, model.textures, discs) };
   }
 
   // A model at rest as the game draws it (hero-snag.js withLimbsSet), made once per model

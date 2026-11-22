@@ -52,6 +52,24 @@ test('repainted texels go after the model\'s data, pointed at as RGBA8, and the 
   assert.equal((0x40 + ((size + 31) & ~31)), out.length - after.length);
 });
 
+test('every image of the same texels (a blink\'s frames) points at the repainted ones', () => {
+  // two HSD_ImageDescs, at 0 and 0x18, of the same texels at 0x40
+  const data = Buffer.alloc(0x40 + 8);
+  for (const desc of [0, 0x18]) { data.writeUInt32BE(0x40, desc); data.writeUInt16BE(4, desc + 4); data.writeUInt16BE(4, desc + 6); data.writeUInt32BE(14, desc + 8); }
+  const header = Buffer.alloc(0x20), relocations = Buffer.alloc(8);
+  header.writeUInt32BE(0x20 + data.length + relocations.length, 0);
+  header.writeUInt32BE(data.length, 4);
+  header.writeUInt32BE(2, 8);
+  const dat = Buffer.concat([header, data, relocations]), top = Buffer.alloc(0x40);
+  top.writeUInt32BE(dat.length, 0);
+  const texels = heroBake.encodeRgba8(new Uint8Array(64).fill(90), 4, 4);
+  const out = heroBake.writePkx(Buffer.concat([top, dat]), [{ image: 0, also: [0x18], data: texels, width: 4, height: 4 }]);
+  const made = out.subarray(0x40 + 0x20);
+  assert.equal(made.readUInt32BE(0), made.readUInt32BE(0x18), 'both point at one copy');
+  assert.deepEqual(made.subarray(made.readUInt32BE(0x18), made.readUInt32BE(0x18) + texels.length), texels);
+  assert.equal(made.readUInt32BE(0x18 + 8), 6, 'as RGBA8');
+});
+
 function plainWithStamp(hero, { magic = 0x43504852, broken = false } = {}) {
   const plain = Buffer.alloc(8 + 0x1dfd0), at = 8 + 0x1dfc0;
   plain.writeUInt32BE(magic, at);
