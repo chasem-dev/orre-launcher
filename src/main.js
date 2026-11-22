@@ -1894,6 +1894,8 @@ function keepGameSettings(file) {
 // command it carries out and saves itself.
 let storyGame = null;            // the game whose story is running ('colosseum' or 'xd'), or null
 let storyLive = null;            // its live picture and commands (shadowtrade.LiveGame), while it runs
+let storyCoop = null;            // live co-op room controller (together.wireLiveHost) for the running story
+let playingTogetherRelay = null; // relay for a game launched via playTogether()
 let shadowtradeTrades = null;
 let shadowtradeTimer = null;
 const SHADOWTRADE_SYNC_MS = 2 * 60 * 1000;
@@ -1912,20 +1914,45 @@ async function openStoryLink(game) {
 
 // The running story's live picture over `link`: the Pokémon page follows it, and trades and arrivals waiting for the save
 // go to the game once its save is in
-function wireStoryLive(link, game) {
+function wireStoryLive(link, gameId) {
   let refresh = null, synced = false, onlineSynced = false, localSynced = false;
   storyLive = new shadowtrade.LiveGame(link, { onChange: ({ whole, closed }) => {
-    if (!refresh) refresh = setTimeout(() => { refresh = null; broadcast('pokemon-changed', game); }, LIVE_REFRESH_MS);
+    if (!refresh) refresh = setTimeout(() => { refresh = null; broadcast('pokemon-changed', gameId); }, LIVE_REFRESH_MS);
     if (closed) return;
     // a live game can take trades that were waiting for it: once its save is in, and when it changes
-    const pending = trades().state.journal.some(entry => entry.game === game && ['received', 'giving', 'taking'].includes(entry.stage));
+    const pending = trades().state.journal.some(entry => entry.game === gameId && ['received', 'giving', 'taking'].includes(entry.stage));
     if (pending && storyLive?.current()?.head.loaded && (whole || !synced)) { synced = true; syncTrades(); }
-    const tradesWaiting = onlineTradesInstance?.state.journal.some(entry => entry.game === game);
+    const tradesWaiting = onlineTradesInstance?.state.journal.some(entry => entry.game === gameId);
     if (tradesWaiting && storyLive?.current()?.head.loaded && storyLive.current().head.safe && !onlineSynced) { onlineSynced = true; syncOnlineTrades(); }
-    const localWaiting = localTradesInstance?.state.journal.some(entry => entry.sides.some(side => side.game === game));
+    const localWaiting = localTradesInstance?.state.journal.some(entry => entry.sides.some(side => side.game === gameId));
     if (localWaiting && storyLive?.current()?.head.loaded && storyLive.current().head.safe && !localSynced) { localSynced = true; syncLocalTrades(); }
     if (storyLive?.current()?.head.loaded && storyLive.current().head.safe) deliverArrivals();
   } });
+  storyCoop = together.wireLiveHost(link, {
+    game: gameId,
+    getHello: overrideName => {
+      const installed = game.installed(config.repo, gameId);
+      const build = together.coopBuild(gameId, installed);
+      return {
+        name: together.name(overrideName || config.online?.trainer),
+        game: gameId,
+        build,
+        version: installed?.gameVersion || '',
+        launcher: app.getVersion()
+      };
+    },
+    createRelay: () => new CoopRelay({ fetch: (...args) => net.fetch(...args) }),
+    copy: code => clipboard.writeText(code),
+    onState: state => broadcast('together-state', state),
+    onExternalStop: () => {
+      if (playingTogetherRelay) {
+        try { playingTogetherRelay.close(); } catch (_) {}
+        playingTogetherRelay = null;
+        broadcast('together-state', null);
+      }
+    },
+    log
+  });
 }
 
 // --- A game left running. The launcher closing while its game plays leaves the game running (before-quit), and its link
@@ -2055,7 +2082,11 @@ function closeAdoptLink() {
 function closeStoryLink(link) {
   if (!link) return;
   link.close();
-  if (storyLive?.link === link) storyLive = null;
+  if (storyLive?.link === link) {
+    storyLive = null;
+    storyCoop?.stop(false);
+    storyCoop = null;
+  }
 }
 function trades() {
   if (!shadowtradeTrades) shadowtradeTrades = new shadowtrade.Shadowtrade({ folder: path.join(app.getPath('userData'), 'shadowtrade'),
@@ -2463,10 +2494,11 @@ async function playTogether(value) {
   const build = together.coopBuild(chosen.id, game.installed(config.repo, config.game));
   const hello = { name: request.name, game: chosen.id, build, version: game.installed(config.repo, config.game)?.gameVersion || '', launcher: app.getVersion() };
   const relay = new CoopRelay({ fetch: (...args) => net.fetch(...args) });
+  playingTogetherRelay = relay;
   const tell = state => broadcast('together-state', state);
-  relay.on('peer', peer => { tell({ code: relay.code, playing: true, peer: peer.name }); log(`${peer.name} is playing with you.`); });
+  relay.on('peer', peer => { tell({ code: formatCode(relay.code), playing: true, peer: peer.name }); log(`${peer.name} is playing with you.`); });
   relay.on('peer-lost', () => log('The other player\'s connection dropped: they have a minute to come back.'));
-  relay.on('left', () => { tell({ code: relay.code, playing: false }); log('The other player has left.'); });
+  relay.on('left', () => { tell({ code: formatCode(relay.code), playing: false }); log('The other player has left.'); });
   try {
     if (request.mode === 'host') {
       const { code, gamePort } = await relay.host(hello);
@@ -2484,6 +2516,7 @@ async function playTogether(value) {
     return await playInstalled();
   } finally {
     playingTogether = null;
+    if (playingTogetherRelay === relay) playingTogetherRelay = null;
     relay.close();
     tell(null);
   }
@@ -3626,8 +3659,12 @@ function registerHandlers() {
     if (action === 'sync') { await syncLocalTrades(); return view(); }
     throw new Error('No such trade action.');
   });
-  ipcMain.handle('play-together', (_event, value) => exclusive(playLabel(), () => playTogether(value), true));
-  ipcMain.handle('together-state', () => together.remembered(config.together));
+  ipcMain.handle('play-together', (_event, value) => {
+    if (value?.mode === 'host' && storyCoop && storyGame === activeGame().id && storyLive?.link?.hello?.caps?.has('coop-host.1'))
+      return storyCoop.host(value?.name);
+    return exclusive(playLabel(), () => playTogether(value), true);
+  });
+  ipcMain.handle('together-state', () => ({ ...together.remembered(config.together), active: storyCoop?.state() || null }));
   ipcMain.handle('together-copy', (_event, code) => { clipboard.writeText(String(code || '').slice(0, 7)); return true; });
   ipcMain.handle('save-import', async (_event, action, value) => {
     if (action === 'view') return importView();

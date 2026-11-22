@@ -790,7 +790,10 @@
   $('together-join').addEventListener('click', () => playTogether('join'));
   $('together-copy').addEventListener('click', () => window.colo.togetherCopy($('together-room-code').textContent));
   window.colo.onTogether?.(showTogether);
-  window.colo.togetherState?.().then(state => { if (state?.code) $('together-code').value = `${state.code.slice(0, 3)}-${state.code.slice(3)}`; }).catch(() => {});
+  window.colo.togetherState?.().then(state => {
+    if (state?.code) $('together-code').value = `${state.code.slice(0, 3)}-${state.code.slice(3)}`;
+    if (state?.active) showTogether(state.active);
+  }).catch(() => {});
   $('online-leave').addEventListener('click', () => window.colo.onlineLeave());
   $('online-refresh').addEventListener('click', refreshNow);
   document.addEventListener('visibilitychange', () => poll.wake());
