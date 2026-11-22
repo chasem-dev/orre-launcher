@@ -82,6 +82,12 @@ function showSettingsTab(name) {
   if (name === 'launcher') loadUpdateChannels();
 }
 for (const tab of settingsTabs) $(`tab-${tab}`).addEventListener('click', () => showSettingsTab(tab));
+window.coloOpenSplitSettings = () => {
+  showPage('settings');
+  showSettingsTab('gameplay');
+  const el = $('coop');
+  if (el) el.closest('.settings-group')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+};
 onPage('settings', {
   show() {
     showSettingsTab(settingsTab);

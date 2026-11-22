@@ -83,44 +83,68 @@
 
       </section>
       <section id="page-online" class="page sheet online-page" aria-labelledby="online-title" hidden>
-        <div class="modal-head"><div><h1 id="online-title">Online</h1><p>Build a party, then open a room or join one and battle another player.</p></div></div>
-        <div class="online-body">
+        <div class="modal-head online-head">
+          <div><h1 id="online-title">Online</h1><p id="online-subtitle">Play the story with a friend, or switch to Battles for PvP.</p></div>
+          <div class="online-mode-tabs" role="tablist" aria-label="Online mode">
+            <button id="online-mode-coop" class="online-mode-tab" role="tab" type="button" aria-selected="true" aria-controls="online-panel-coop"><span>Co-op Story</span><span id="online-mode-coop-badge" class="online-mode-badge live" hidden>Live</span></button>
+            <button id="online-mode-battles" class="online-mode-tab" role="tab" type="button" aria-selected="false" aria-controls="online-panel-battles"><span>Battles</span><span id="online-mode-battles-badge" class="online-mode-badge" hidden></span></button>
+            <button id="online-mode-replays" class="online-mode-tab" role="tab" type="button" aria-selected="false" aria-controls="online-panel-replays"><span>Replays</span></button>
+          </div>
+        </div>
+        <div id="online-banner" class="online-banner online-top-banner" role="status" hidden>
+          <div><strong id="online-banner-title"></strong><small id="online-banner-detail"></small></div>
+          <button id="online-leave" class="subtle">Leave</button>
+        </div>
+
+        <div id="online-panel-coop" class="online-mode-panel coop-panel" role="tabpanel" aria-labelledby="online-mode-coop">
+          <div class="coop-grid">
+            <section class="coop-card" aria-labelledby="coop-join-title">
+              <div class="coop-card-head">
+                <h2 id="coop-join-title" class="coop-card-title">Join a friend's story</h2>
+                <span class="coop-pill">Guest</span>
+              </div>
+              <p class="helper">Enter the 6-character code from your friend's screen. Your own saves stay untouched.</p>
+              <form id="together-join-form" class="together-join-row">
+                <input id="together-code" class="online-input together-code-input" type="text" maxlength="7" spellcheck="false" autocomplete="off" placeholder="KQ7-M2D" aria-label="Host's co-op code">
+                <button id="together-join" class="solid" type="submit">Join</button>
+              </form>
+              <small class="coop-footnote">Matches your friend's game and version automatically — no port forwarding.</small>
+            </section>
+
+            <section class="coop-card" aria-labelledby="coop-host-title">
+              <div class="coop-card-head">
+                <h2 id="coop-host-title" class="coop-card-title">Host your story</h2>
+                <span id="together-running-pill" class="coop-pill running" hidden><i aria-hidden="true"></i><span id="together-running-text"></span></span>
+              </div>
+              <p class="helper">Share your save live with a friend. While playing solo, you can also open a room from <strong>START → Settings → Co-op</strong>.</p>
+              <div id="together-host-idle" class="together-host-actions">
+                <button id="together-host" class="solid" type="button">Host game</button>
+                <small id="together-host-note" class="coop-footnote">Starts your save hosting and shows a co-op code to share.</small>
+              </div>
+              <div id="together-room" class="together-room" role="status" hidden>
+                <div><strong id="together-room-code"></strong><small id="together-room-detail"></small></div>
+                <div class="together-room-actions">
+                  <button id="together-copy" class="subtle" type="button">Copy</button>
+                  <button id="together-stop" class="subtle" type="button">Close</button>
+                </div>
+              </div>
+            </section>
+          </div>
+          <p id="together-error" class="helper together-error" role="status" hidden></p>
+          <div class="coop-local-strip">
+            <div><strong>Local split-screen:</strong> Playing on the same computer? Just press <strong>START</strong> on Player 2's controller in the field.</div>
+            <button id="together-split-settings" class="subtle" type="button">Split-screen settings →</button>
+          </div>
+        </div>
+
+        <div id="online-panel-battles" class="online-mode-panel online-body" role="tabpanel" aria-labelledby="online-mode-battles" hidden>
           <div class="online-column">
             <div class="online-heading"><h2 class="group-title">Your parties</h2><button id="party-new" class="subtle">New party</button></div>
             <div id="party-list" class="party-list" role="radiogroup" aria-label="Choose the party to battle with"></div>
             <p id="party-empty" class="helper" hidden>Build a party of six to battle with.</p>
             <label class="online-field"><span>Trainer name</span><input id="online-trainer" class="online-input" type="text" maxlength="10" spellcheck="false" autocomplete="off"></label>
-            <section class="together" aria-labelledby="together-title">
-              <h2 id="together-title" class="group-title">Play the story together</h2>
-              <p class="helper">One player hosts their own save and the other joins it. You play the host's story side by side, each on your own screen: through doors together, into battles together (the host chooses for the first Pokémon, the other player for the second), and the story's progress, items and party are the host's save. No port forwarding: the games talk through the room server.</p>
-              <div class="together-row"><span class="together-label">Host your save, and send the code to the other player</span><button id="together-host" class="solid">Host game</button></div>
-              <div id="together-room" class="together-room" role="status" hidden><div><strong id="together-room-code"></strong><small id="together-room-detail"></small></div><button id="together-copy" class="subtle" type="button">Copy</button></div>
-              <div class="together-row"><label class="online-field together-code"><span>Host's co-op code</span><input id="together-code" class="online-input" type="text" maxlength="7" spellcheck="false" autocomplete="off" placeholder="KQ7-M2D"></label><button id="together-join" class="solid">Join</button></div>
-              <p id="together-error" class="helper together-error" role="status" hidden></p>
-            </section>
           </div>
           <div class="online-column online-rooms">
-            <div id="online-banner" class="online-banner" role="status" hidden>
-              <div><strong id="online-banner-title"></strong><small id="online-banner-detail"></small></div>
-              <button id="online-leave" class="subtle">Leave</button>
-            </div>
-            <div id="replay-player" class="replay-player" hidden>
-              <div id="replay-games" class="replay-games" role="group" aria-label="Game of the set" hidden></div>
-              <div id="replay-timeline" class="replay-timeline" role="slider" tabindex="0" aria-label="Turn" aria-valuemin="0">
-                <div class="replay-track"><span id="replay-seeking" class="replay-seeking"></span><span id="replay-fill" class="replay-fill"></span></div>
-                <div id="replay-marks" class="replay-marks" aria-hidden="true"></div>
-                <span id="replay-hover" class="replay-hover" hidden></span>
-              </div>
-              <div class="replay-controls">
-                <button id="replay-restart" class="subtle" type="button" aria-label="Back to the start" title="Back to the start"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 4v12M16 4.5v11l-8-5.5z"/></svg></button>
-                <button id="replay-previous" class="subtle" type="button" aria-label="Previous turn" title="Previous turn"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4.5v11l-7-5.5zM17 4.5v11l-7-5.5z"/></svg></button>
-                <button id="replay-toggle" class="solid" type="button" aria-label="Pause" title="Pause or play"></button>
-                <button id="replay-next" class="subtle" type="button" aria-label="Next turn" title="Next turn"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 4.5v11l7-5.5zM10 4.5v11l7-5.5z"/></svg></button>
-                <span id="replay-turn" class="replay-turn" role="status"></span>
-                <label class="replay-speed"><span>Speed</span><select id="replay-speed" aria-label="Speed"><option value="5">0.5x</option><option value="10">1x</option><option value="20">2x</option><option value="40">4x</option><option value="80">8x</option></select></label>
-              </div>
-              <small id="replay-note" class="replay-note"></small>
-            </div>
             <div id="online-pick" class="online-pick" hidden>
               <div class="online-pick-head"><strong id="online-pick-title"></strong><span id="online-pick-time" class="online-pick-time"></span></div>
               <small id="online-pick-help"></small>
@@ -151,20 +175,43 @@
             </div>
             <p id="online-blocked" class="helper" hidden></p>
             <div class="online-heading">
-              <div class="online-tabs" role="tablist" aria-label="Rooms or replays"><button id="online-tab-rooms" class="online-tab" role="tab" type="button" aria-selected="true" aria-controls="online-rooms-panel"><h2 class="group-title">Rooms</h2></button><button id="online-tab-replays" class="online-tab" role="tab" type="button" aria-selected="false" aria-controls="online-replays-panel"><h2 class="group-title">Replays</h2></button></div>
+              <h2 class="group-title">Open rooms</h2>
               <span class="online-rooms-tools"><button id="online-refresh" class="subtle" title="Check for new rooms and the online count now">Refresh</button>
               <form id="online-code-form" class="online-code"><input id="online-code" class="online-input" type="text" maxlength="7" placeholder="Room code" spellcheck="false" autocomplete="off" aria-label="Room code"><button id="online-code-join" class="subtle">Join</button><button id="online-code-watch" class="subtle" type="button" title="Watch this room's battle">Watch</button></form></span>
-              <span class="online-replays-tools" hidden><button id="replays-open" class="subtle" type="button" title="Add a replay someone sent you">Open replay…</button><button id="replays-folder" class="subtle" type="button" title="Show the folder your replays are saved in, to send one to someone">Show folder</button></span>
             </div>
-            <div id="online-rooms-panel" class="online-tab-panel" role="tabpanel" aria-labelledby="online-tab-rooms">
+            <div id="online-rooms-panel" class="online-tab-panel">
               <p id="online-versions" class="helper online-versions"></p>
               <div id="online-rooms" class="online-room-list" aria-live="polite"></div>
               <p id="online-rooms-empty" class="helper">No rooms are open. Create one and wait for a challenger.</p>
             </div>
-            <div id="online-replays-panel" class="online-tab-panel" role="tabpanel" aria-labelledby="online-tab-replays" hidden>
-              <div id="replays-list" class="online-room-list replay-list"></div>
-              <p id="replays-empty" class="helper"></p>
+          </div>
+        </div>
+
+        <div id="online-panel-replays" class="online-mode-panel replays-panel" role="tabpanel" aria-labelledby="online-mode-replays" hidden>
+          <div id="replay-player" class="replay-player" hidden>
+            <div id="replay-games" class="replay-games" role="group" aria-label="Game of the set" hidden></div>
+            <div id="replay-timeline" class="replay-timeline" role="slider" tabindex="0" aria-label="Turn" aria-valuemin="0">
+              <div class="replay-track"><span id="replay-seeking" class="replay-seeking"></span><span id="replay-fill" class="replay-fill"></span></div>
+              <div id="replay-marks" class="replay-marks" aria-hidden="true"></div>
+              <span id="replay-hover" class="replay-hover" hidden></span>
             </div>
+            <div class="replay-controls">
+              <button id="replay-restart" class="subtle" type="button" aria-label="Back to the start" title="Back to the start"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 4v12M16 4.5v11l-8-5.5z"/></svg></button>
+              <button id="replay-previous" class="subtle" type="button" aria-label="Previous turn" title="Previous turn"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4.5v11l-7-5.5zM17 4.5v11l-7-5.5z"/></svg></button>
+              <button id="replay-toggle" class="solid" type="button" aria-label="Pause" title="Pause or play"></button>
+              <button id="replay-next" class="subtle" type="button" aria-label="Next turn" title="Next turn"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 4.5v11l7-5.5zM10 4.5v11l7-5.5z"/></svg></button>
+              <span id="replay-turn" class="replay-turn" role="status"></span>
+              <label class="replay-speed"><span>Speed</span><select id="replay-speed" aria-label="Speed"><option value="5">0.5x</option><option value="10">1x</option><option value="20">2x</option><option value="40">4x</option><option value="80">8x</option></select></label>
+            </div>
+            <small id="replay-note" class="replay-note"></small>
+          </div>
+          <div class="online-heading">
+            <h2 class="group-title">Saved replays</h2>
+            <span class="online-replays-tools"><button id="replays-open" class="subtle" type="button" title="Add a replay someone sent you">Open replay…</button><button id="replays-folder" class="subtle" type="button" title="Show the folder your replays are saved in, to send one to someone">Show folder</button></span>
+          </div>
+          <div id="online-replays-panel" class="online-tab-panel">
+            <div id="replays-list" class="online-room-list replay-list"></div>
+            <p id="replays-empty" class="helper"></p>
           </div>
         </div>
       </section>

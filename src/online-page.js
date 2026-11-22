@@ -327,6 +327,11 @@
 
   function renderRooms() {
     const busy = Boolean(state.battle) || Boolean(state.ready);
+    const badge = $('online-mode-battles-badge');
+    if (badge) {
+      badge.textContent = rooms.length ? `${rooms.length} ${rooms.length === 1 ? 'room' : 'rooms'}` : '';
+      badge.hidden = rooms.length === 0;
+    }
     $('online-rooms-empty').textContent = NO_ROOMS;
     $('online-rooms-empty').hidden = rooms.length > 0;
     $('online-rooms').replaceChildren(...rooms.map(room => {
@@ -529,16 +534,23 @@
     return null;
   }
 
-  function setTab(next) {
-    tab = next;
-    $('online-tab-rooms').setAttribute('aria-selected', String(tab === 'rooms'));
-    $('online-tab-replays').setAttribute('aria-selected', String(tab === 'replays'));
-    $('online-rooms-panel').hidden = tab !== 'rooms';
-    $('online-replays-panel').hidden = tab !== 'replays';
-    document.querySelector('.online-rooms-tools').hidden = tab !== 'rooms';
-    document.querySelector('.online-replays-tools').hidden = tab !== 'replays';
-    if (tab === 'replays') loadReplays();
+  let mode = 'coop';
+  const MODE_SUBTITLES = {
+    coop: 'Play the story with a friend over a code, or locally in split-screen.',
+    battles: 'Build a party, then open a room or join one and battle another player.',
+    replays: 'Watch saved online battles or open a replay file someone sent you.'
+  };
+  function setMode(next) {
+    mode = next;
+    tab = next === 'replays' ? 'replays' : 'rooms';
+    for (const key of ['coop', 'battles', 'replays']) {
+      $(`online-mode-${key}`).setAttribute('aria-selected', String(mode === key));
+      $(`online-panel-${key}`).hidden = mode !== key;
+    }
+    $('online-subtitle').textContent = MODE_SUBTITLES[mode] || '';
+    if (mode === 'replays') loadReplays();
   }
+  function setTab(next) { setMode(next === 'replays' ? 'replays' : 'battles'); }
 
   async function loadReplays() {
     try { replayList = await window.colo.replaysList(); renderReplays(); }
@@ -769,30 +781,56 @@
 
   // Play the story together (src/together.js, src/coop-relay.js): hosting this player's save (a co-op code to send) or
   // joining the host's by its code
-  async function playTogether(mode) {
+  let copyTimer = null;
+  async function playTogether(kind) {
     const error = $('together-error');
     error.hidden = true;
     try {
-      await window.colo.playTogether({ mode, code: $('together-code').value, name: $('online-trainer').value });
+      await window.colo.playTogether({ mode: kind, code: $('together-code').value, name: $('online-trainer').value });
     } catch (e) {
       error.textContent = String(e?.message || e).replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
       error.hidden = false;
     }
   }
-  function showTogether(state) {
-    $('together-room').hidden = !state?.code;
-    if (!state?.code) return;
-    $('together-room-code').textContent = state.code;
-    $('together-room-detail').textContent = state.playing ? `Playing with ${state.peer || 'the other player'}`
-      : state.hosting ? 'Your co-op code: send it to the other player. They join while your game runs.' : 'Joining';
+  function showLiveGame(liveGame) {
+    const running = Boolean(liveGame);
+    $('together-running-pill').hidden = !running;
+    if (running) $('together-running-text').textContent = `${liveGame === 'xd' ? 'XD' : 'Colosseum'} running`;
+    $('together-host').textContent = running ? 'Open current save to co-op' : 'Host game';
+    $('together-host-note').textContent = running
+      ? 'Opens a co-op room on your running save without restarting.'
+      : 'Starts your save hosting and shows a co-op code to share.';
+  }
+  function showTogether(active) {
+    const hasRoom = Boolean(active?.code);
+    $('together-room').hidden = !hasRoom;
+    $('together-host-idle').hidden = hasRoom;
+    $('online-mode-coop-badge').hidden = !hasRoom;
+    if (!hasRoom) return;
+    $('together-room-code').textContent = active.code;
+    $('together-room-detail').textContent = active.playing ? `Playing with ${active.peer || 'the other player'}`
+      : active.hosting ? 'Room open · waiting for Player 2' : 'Joining…';
+    $('together-stop').hidden = !active.hosting;
   }
   $('together-host').addEventListener('click', () => playTogether('host'));
-  $('together-join').addEventListener('click', () => playTogether('join'));
-  $('together-copy').addEventListener('click', () => window.colo.togetherCopy($('together-room-code').textContent));
-  window.colo.onTogether?.(showTogether);
-  window.colo.togetherState?.().then(state => {
-    if (state?.code) $('together-code').value = `${state.code.slice(0, 3)}-${state.code.slice(3)}`;
-    if (state?.active) showTogether(state.active);
+  $('together-join-form').addEventListener('submit', event => { event.preventDefault(); playTogether('join'); });
+  $('together-copy').addEventListener('click', () => {
+    window.colo.togetherCopy($('together-room-code').textContent);
+    $('together-copy').textContent = 'Copied!';
+    clearTimeout(copyTimer);
+    copyTimer = setTimeout(() => { $('together-copy').textContent = 'Copy'; }, 1600);
+  });
+  $('together-stop').addEventListener('click', () => window.colo.togetherStop?.().catch(() => {}));
+  $('together-split-settings').addEventListener('click', () => window.coloOpenSplitSettings?.());
+  window.colo.onTogether?.(info => {
+    if (info && Object.prototype.hasOwnProperty.call(info, 'liveGame')) showLiveGame(info.liveGame);
+    if (info && Object.prototype.hasOwnProperty.call(info, 'active')) showTogether(info.active);
+    else showTogether(info);
+  });
+  window.colo.togetherState?.().then(info => {
+    if (info?.code) $('together-code').value = `${info.code.slice(0, 3)}-${info.code.slice(3)}`;
+    showLiveGame(info?.liveGame || null);
+    showTogether(info?.active || null);
   }).catch(() => {});
   $('online-leave').addEventListener('click', () => window.colo.onlineLeave());
   $('online-refresh').addEventListener('click', refreshNow);
@@ -805,9 +843,10 @@
     if ($('online-code').value.trim()) watchRoom($('online-code').value);
   });
 
-  // Replays
-  $('online-tab-rooms').addEventListener('click', () => setTab('rooms'));
-  $('online-tab-replays').addEventListener('click', () => setTab('replays'));
+  // Top-level mode switcher & Replays
+  $('online-mode-coop').addEventListener('click', () => setMode('coop'));
+  $('online-mode-battles').addEventListener('click', () => setMode('battles'));
+  $('online-mode-replays').addEventListener('click', () => setMode('replays'));
   $('replays-open').addEventListener('click', () => importReplays(null));
   $('replays-folder').addEventListener('click', () => window.colo.replaysShow(null));
   $('replay-toggle').addEventListener('click', () => replayControl({ action: 'pause', value: !replayNow()?.paused }));
@@ -847,6 +886,7 @@
     const hadBattle = Boolean(state?.battle);
     state = next;
     render();
+    if (state.battle && !hadBattle) setMode(state.battle.replay ? 'replays' : 'battles');
     if (rooms) renderRooms();
     // the Watch buttons follow whether something plays
     if (replayList && hadBattle !== Boolean(state.battle)) renderReplays();
@@ -870,6 +910,10 @@
       if (!loaded) loadSpecies();
       // the save may have changed since: the Story party is read again
       window.colo.state().then(data => { state = data.online; render(); if (rooms) renderRooms(); }).catch(() => {});
+      window.colo.togetherState?.().then(info => {
+        showLiveGame(info?.liveGame || null);
+        showTogether(info?.active || null);
+      }).catch(() => {});
       poll.start();
     },
     hide() { poll.stop(); }

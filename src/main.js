@@ -1914,6 +1914,12 @@ async function openStoryLink(game) {
 
 // The running story's live picture over `link`: the Pokémon page follows it, and trades and arrivals waiting for the save
 // go to the game once its save is in
+function liveHostGame() {
+  return storyGame && storyLive?.link?.hello?.caps?.has('coop-host.1') ? storyGame : null;
+}
+function broadcastTogether(active = storyCoop?.state() || null) {
+  broadcast('together-state', { active, liveGame: liveHostGame() });
+}
 function wireStoryLive(link, gameId) {
   let refresh = null, synced = false, onlineSynced = false, localSynced = false;
   storyLive = new shadowtrade.LiveGame(link, { onChange: ({ whole, closed }) => {
@@ -1928,6 +1934,8 @@ function wireStoryLive(link, gameId) {
     if (localWaiting && storyLive?.current()?.head.loaded && storyLive.current().head.safe && !localSynced) { localSynced = true; syncLocalTrades(); }
     if (storyLive?.current()?.head.loaded && storyLive.current().head.safe) deliverArrivals();
   } });
+  link.on('hello', () => broadcastTogether());
+  link.on('close', () => broadcastTogether(null));
   storyCoop = together.wireLiveHost(link, {
     game: gameId,
     getHello: overrideName => {
@@ -1943,12 +1951,12 @@ function wireStoryLive(link, gameId) {
     },
     createRelay: () => new CoopRelay({ fetch: (...args) => net.fetch(...args) }),
     copy: code => clipboard.writeText(code),
-    onState: state => broadcast('together-state', state),
+    onState: state => broadcastTogether(state),
     onExternalStop: () => {
       if (playingTogetherRelay) {
         try { playingTogetherRelay.close(); } catch (_) {}
         playingTogetherRelay = null;
-        broadcast('together-state', null);
+        broadcastTogether(null);
       }
     },
     log
@@ -3664,8 +3672,17 @@ function registerHandlers() {
       return storyCoop.host(value?.name);
     return exclusive(playLabel(), () => playTogether(value), true);
   });
-  ipcMain.handle('together-state', () => ({ ...together.remembered(config.together), active: storyCoop?.state() || null }));
+  ipcMain.handle('together-state', () => ({ ...together.remembered(config.together), active: storyCoop?.state() || null, liveGame: liveHostGame() }));
   ipcMain.handle('together-copy', (_event, code) => { clipboard.writeText(String(code || '').slice(0, 7)); return true; });
+  ipcMain.handle('together-stop', () => {
+    if (storyCoop?.state()) storyCoop.stop(true);
+    else if (playingTogetherRelay) {
+      try { playingTogetherRelay.close(); } catch (_) {}
+      playingTogetherRelay = null;
+      broadcastTogether(null);
+    }
+    return true;
+  });
   ipcMain.handle('save-import', async (_event, action, value) => {
     if (action === 'view') return importView();
     if (action === 'open') return importOpen(String(value));
