@@ -11,25 +11,28 @@ test('the game screen\'s value names become the launcher\'s values', () => {
   // the names as the game's Settings screen writes them (ext/sms_gx gx_settings.cpp, host/settings.c)
   const changes = gameSettings.translate({
     fullscreen: 'On', fullscreenMode: 'Exclusive', exclusiveResolution: '2560 x 1440', display: 'Monitor 2', aspect: 'Whole Multiples',
-    brightness: '120', vsync: 'Adaptive', overlay: 'Off', resolution: '3x', msaa: '8x', fxaa: 'On', anisotropic: 'Off', sharpen: '25',
+    brightness: '120', frameRate: '120 fps', vsync: 'Adaptive', overlay: 'Off', resolution: '3x', msaa: '8x', fxaa: 'On', anisotropic: 'Off', sharpen: '25',
     presentFilter: 'FSR 1', fsrMode: 'Ultra Performance', textures: 'Off', shaderWarmup: 'Off', volumeMaster: '80', volumeMusic: '0',
     volumeEffects: '55'
   });
   assert.deepEqual(changes, {
     fullscreen: true, fullscreenMode: 'exclusive', exclusiveResolution: '2560x1440', display: 'monitor2', aspect: 'integer',
-    brightness: 120, vsync: 'adaptive', overlay: false, resolution: 3, msaa: 8, fxaa: true, anisotropic: 0, sharpen: 25,
+    brightness: 120, frameRate: 120, vsync: 'adaptive', overlay: false, resolution: 3, msaa: 8, fxaa: true, anisotropic: 0, sharpen: 25,
     presentFilter: 'fsr', fsrMode: 'ultraperformance', textures: false, shaderWarmup: false, volumeMaster: 80, volumeMusic: 0,
     volumeEffects: 55
   });
   // and the launcher keeps every one of them as it is
   const settings = port.normalizeSettings({ ...port.normalizeSettings({}, 'linux'), ...changes }, 'linux');
   for (const [key, value] of Object.entries(changes)) assert.deepEqual(settings[key], value, key);
+  assert.deepEqual(gameSettings.translate({ frameRate: '30 fps' }), { frameRate: 30 });
+  assert.deepEqual(gameSettings.translate({ frameRate: '60 fps' }), { frameRate: 60 });
 });
 
 test('values the launcher has no setting for are left out', () => {
   assert.deepEqual(gameSettings.translate({
     resolution: '2.67x',          // an upscaling mode's scale
     msaa: '16x',
+    frameRate: '90 fps',
     display: 'Monitor 1 (primary)',
     colorSpace: 'NTSC-J',         // the renderer's, not the launcher's
     volumeMusic: '140',

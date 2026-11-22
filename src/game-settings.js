@@ -36,6 +36,7 @@ const READERS = {
   },
   aspect: choice({ Keep: 'keep', Stretch: 'stretch', 'Whole Multiples': 'integer' }),
   brightness: (name) => number(name, 50, 200),
+  frameRate: choice({ '30 fps': 30, '60 fps': 60, '120 fps': 120 }),
   vsync: choice({ Off: 'off', On: 'on', Adaptive: 'adaptive' }),
   overlay: onOff,
   resolution: (name) => (name === 'Native' ? 1 : times(name, [2, 3, 4])),
