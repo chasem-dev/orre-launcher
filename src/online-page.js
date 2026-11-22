@@ -3,10 +3,11 @@
 (() => {
   const $ = id => document.getElementById(id);
   const PARTY_SIZE = 6, MAX_PARTIES = 32, STORY = 'story', NO_ROOMS = 'No rooms are open. Create one and wait for a challenger.';
+  const NO_COOP_ROOMS = 'No public co-op rooms are open right now. Host your story with "Show in public lobby" checked to list yours.';
   const REFRESH_REST = 3000; // ms before Refresh works again: the server's list is this old at best
   const message = error => String(error?.message || error).replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
 
-  let state = null, setup = null, rooms = null, loaded = false, customOpen = false, picking = [], pickTimer = null;
+  let state = null, setup = null, rooms = null, coopRooms = null, coopActive = null, coopGame = null, coopBuild = null, loaded = false, customOpen = false, picking = [], pickTimer = null;
   const builder = () => window.coloTeamBuilder;
   const F = window.coloFormats;
   const V = window.coloOnlineVersions;
@@ -381,15 +382,29 @@
 
   // What the poll compares. Not the whole list: a room's minutes change by themselves.
   async function loadRooms() {
-    try {
-      rooms = await window.colo.onlineRooms();
+    const [battleRes, coopRes] = await Promise.allSettled([
+      window.colo.onlineRooms(),
+      window.colo.togetherRooms ? window.colo.togetherRooms() : Promise.resolve([])
+    ]);
+    let parts = [];
+    if (battleRes.status === 'fulfilled') {
+      rooms = battleRes.value;
       renderRooms();
-      return rooms.map(room => `${room.code} ${room.status}`).join();
-    } catch (error) {
+      parts.push(rooms.map(room => `${room.code} ${room.status}`).join());
+    } else {
       $('online-rooms-empty').textContent = 'Couldn\'t reach the room server.';
       $('online-rooms-empty').hidden = false;
-      throw error;
     }
+    if (coopRes.status === 'fulfilled') {
+      coopRooms = coopRes.value;
+      renderCoopRooms();
+      parts.push(coopRooms.map(room => `${room.code} ${room.status}`).join());
+    } else {
+      $('together-rooms-empty').textContent = 'Couldn\'t reach the room server.';
+      $('together-rooms-empty').hidden = false;
+    }
+    if (battleRes.status === 'rejected' && coopRes.status === 'rejected') throw battleRes.reason;
+    return parts.join('|');
   }
 
   const poll = window.coloRoomPoll.createRoomPoll({ load: loadRooms,
@@ -398,9 +413,11 @@
   async function refreshNow() {
     if (!state) return;
     $('online-refresh').disabled = true;
+    $('together-refresh').disabled = true;
     window.colo.usageRefresh();
     await Promise.all([poll.refresh(), new Promise(resolve => setTimeout(resolve, REFRESH_REST))]);
     $('online-refresh').disabled = false;
+    $('together-refresh').disabled = false;
   }
 
   async function createRoom() {
@@ -536,7 +553,7 @@
 
   let mode = 'coop';
   const MODE_SUBTITLES = {
-    coop: 'Play the story with a friend over a code, or locally in split-screen.',
+    coop: 'Play the story with a friend by code, join an open public co-op room, or play locally in split-screen.',
     battles: 'Build a party, then open a room or join one and battle another player.',
     replays: 'Watch saved online battles or open a replay file someone sent you.'
   };
@@ -780,17 +797,73 @@
   $('online-create').addEventListener('click', createRoom);
 
   // Play the story together (src/together.js, src/coop-relay.js): hosting this player's save (a co-op code to send) or
-  // joining the host's by its code
+  // joining the host's by its code or from the public co-op lobby
   let copyTimer = null;
-  async function playTogether(kind) {
+  const formatCoopCode = code => code && code.length === 6 ? `${code.slice(0, 3)}-${code.slice(3)}` : (code || '');
+  async function playTogether(kind, overrideCode) {
     const error = $('together-error');
     error.hidden = true;
+    if (overrideCode) $('together-code').value = formatCoopCode(overrideCode);
     try {
-      await window.colo.playTogether({ mode: kind, code: $('together-code').value, name: $('online-trainer').value });
+      await window.colo.playTogether({
+        mode: kind,
+        code: overrideCode ?? $('together-code').value,
+        name: $('online-trainer').value,
+        listed: $('together-listed').checked
+      });
     } catch (e) {
       error.textContent = String(e?.message || e).replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
       error.hidden = false;
     }
+  }
+  function updateCoopBadge() {
+    const badge = $('online-mode-coop-badge');
+    if (!badge) return;
+    if (coopActive?.code) {
+      badge.textContent = 'Live';
+      badge.classList.add('live');
+      badge.hidden = false;
+      return;
+    }
+    const open = (coopRooms || []).filter(room => room.status === 'waiting').length;
+    badge.classList.remove('live');
+    badge.textContent = open ? `${open} open` : '';
+    badge.hidden = open === 0;
+  }
+  function renderCoopRooms() {
+    updateCoopBadge();
+    if (!coopRooms) return;
+    const busy = Boolean(coopActive?.code) || Boolean(state?.battle);
+    $('together-rooms-empty').textContent = NO_COOP_ROOMS;
+    $('together-rooms-empty').hidden = coopRooms.length > 0;
+    $('together-rooms').replaceChildren(...coopRooms.map(room => {
+      const waiting = room.status === 'waiting';
+      const sameGame = !coopGame || room.game === coopGame;
+      const sameBuild = !coopBuild || room.build === coopBuild;
+      const gameLabel = room.game === 'xd' ? 'Pokémon XD' : 'Pokémon Colosseum';
+      const age = room.minutes > 0 ? `${room.minutes}m ago` : 'just opened';
+      const statusText = waiting ? `Waiting for Player 2 · ${age}` : `In game · ${age}`;
+      const row = Object.assign(document.createElement('div'), { className: 'online-room' });
+      const title = Object.assign(document.createElement('span'), { textContent: room.host || 'Trainer' });
+      title.append(Object.assign(document.createElement('em'), {
+        className: `coop-room-game${room.game === 'xd' ? ' xd' : ''}`,
+        textContent: room.game === 'xd' ? 'XD' : 'Colosseum'
+      }));
+      const detail = Object.assign(document.createElement('small'), {
+        textContent: `${statusText}${room.version ? ` · game ${room.version}` : ''}`
+      });
+      row.append(title, detail);
+      let problem = '';
+      if (!sameGame) problem = `Switch to ${gameLabel} on the Play page to join.`;
+      else if (!sameBuild) problem = `Different game build${room.version ? ` (host has ${room.version})` : ''}. Both players need the same build.`;
+      if (problem) row.append(Object.assign(document.createElement('p'), { className: 'coop-room-note', textContent: problem }));
+      const join = Object.assign(document.createElement('button'), { className: 'solid', type: 'button', textContent: waiting ? 'Join' : 'In game' });
+      join.disabled = busy || !waiting || !sameGame || !sameBuild;
+      join.title = problem || (!waiting ? `${room.host} is already playing with someone.` : `Join ${room.host}'s ${gameLabel} story`);
+      join.addEventListener('click', () => playTogether('join', room.code));
+      row.append(join);
+      return row;
+    }));
   }
   function showLiveGame(liveGame) {
     const running = Boolean(liveGame);
@@ -802,35 +875,50 @@
       : 'Starts your save hosting and shows a co-op code to share.';
   }
   function showTogether(active) {
+    coopActive = active || null;
     const hasRoom = Boolean(active?.code);
     $('together-room').hidden = !hasRoom;
     $('together-host-idle').hidden = hasRoom;
-    $('online-mode-coop-badge').hidden = !hasRoom;
+    $('together-listed-row').hidden = hasRoom && !active.hosting;
+    if (active && typeof active.listed === 'boolean') $('together-listed').checked = active.listed;
+    updateCoopBadge();
+    if (coopRooms) renderCoopRooms();
     if (!hasRoom) return;
     $('together-room-code').textContent = active.code;
     $('together-room-detail').textContent = active.playing ? `Playing with ${active.peer || 'the other player'}`
-      : active.hosting ? 'Room open · waiting for Player 2' : 'Joining…';
+      : active.hosting ? `Room open · ${active.listed ? 'public lobby · ' : ''}waiting for Player 2` : 'Joining…';
     $('together-stop').hidden = !active.hosting;
+  }
+  function applyTogetherInfo(info) {
+    if (!info) { showTogether(null); return; }
+    if (info.game) coopGame = info.game;
+    if (info.build) coopBuild = info.build;
+    if (typeof info.listed === 'boolean' && !info.active?.code) $('together-listed').checked = info.listed;
+    if (Object.prototype.hasOwnProperty.call(info, 'liveGame')) showLiveGame(info.liveGame);
+    if (Object.prototype.hasOwnProperty.call(info, 'active')) showTogether(info.active);
+    else showTogether(info);
   }
   $('together-host').addEventListener('click', () => playTogether('host'));
   $('together-join-form').addEventListener('submit', event => { event.preventDefault(); playTogether('join'); });
+  $('together-listed').addEventListener('change', event => {
+    window.colo.togetherListed?.(event.target.checked).then(() => poll.refresh()).catch(e => {
+      $('together-error').textContent = message(e);
+      $('together-error').hidden = false;
+    });
+  });
+  $('together-refresh').addEventListener('click', refreshNow);
   $('together-copy').addEventListener('click', () => {
     window.colo.togetherCopy($('together-room-code').textContent);
     $('together-copy').textContent = 'Copied!';
     clearTimeout(copyTimer);
     copyTimer = setTimeout(() => { $('together-copy').textContent = 'Copy'; }, 1600);
   });
-  $('together-stop').addEventListener('click', () => window.colo.togetherStop?.().catch(() => {}));
+  $('together-stop').addEventListener('click', () => window.colo.togetherStop?.().then(() => poll.refresh()).catch(() => {}));
   $('together-split-settings').addEventListener('click', () => window.coloOpenSplitSettings?.());
-  window.colo.onTogether?.(info => {
-    if (info && Object.prototype.hasOwnProperty.call(info, 'liveGame')) showLiveGame(info.liveGame);
-    if (info && Object.prototype.hasOwnProperty.call(info, 'active')) showTogether(info.active);
-    else showTogether(info);
-  });
+  window.colo.onTogether?.(applyTogetherInfo);
   window.colo.togetherState?.().then(info => {
-    if (info?.code) $('together-code').value = `${info.code.slice(0, 3)}-${info.code.slice(3)}`;
-    showLiveGame(info?.liveGame || null);
-    showTogether(info?.active || null);
+    if (info?.code) $('together-code').value = formatCoopCode(info.code);
+    applyTogetherInfo(info);
   }).catch(() => {});
   $('online-leave').addEventListener('click', () => window.colo.onlineLeave());
   $('online-refresh').addEventListener('click', refreshNow);
@@ -910,10 +998,7 @@
       if (!loaded) loadSpecies();
       // the save may have changed since: the Story party is read again
       window.colo.state().then(data => { state = data.online; render(); if (rooms) renderRooms(); }).catch(() => {});
-      window.colo.togetherState?.().then(info => {
-        showLiveGame(info?.liveGame || null);
-        showTogether(info?.active || null);
-      }).catch(() => {});
+      window.colo.togetherState?.().then(applyTogetherInfo).catch(() => {});
       poll.start();
     },
     hide() { poll.stop(); }

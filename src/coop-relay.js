@@ -21,6 +21,7 @@ const telemetry = require('./telemetry');
 const COOP_PROTOCOL = 1;   // (the room's: its hello, and batched packets)
 const REPLY_WAIT = 8000;
 const PING_EVERY = 30000;
+const HEARTBEAT_EVERY = 45000;
 const LOCAL = '127.0.0.1';
 const CODE_ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
 const BATCH_MS = 15;
@@ -62,6 +63,8 @@ class CoopRelay extends EventEmitter {
     this.udp = null;
     this.game = null;        // where this computer's game is: { port, address }
     this.code = null;
+    this.listed = false;
+    this.heartbeat = null;
     this.closed = false;
     this.counts = { up: 0, down: 0 };   // packets from this computer's game to the room, and from the room to it
     this.batch = []; this.batchBytes = 0; this.batchTimer = null;
@@ -140,21 +143,43 @@ class CoopRelay extends EventEmitter {
       if (msg.type === 'peer') this.emit('peer', { name: msg.name, game: msg.game });
       else if (msg.type === 'peer-lost') this.emit('peer-lost');
       else if (msg.type === 'left') this.emit('left');
+      else if (msg.type === 'listed') { this.listed = Boolean(msg.listed); this.emit('listed', this.listed); }
       else if (msg.type === 'refused') this.emit('refused', REFUSED[msg.reason] || 'The room server didn\'t take this game.');
     });
     ws.addEventListener('close', () => { if (!this.closed) this.emit('closed'); });
     this.ping = setInterval(() => { try { if (ws.readyState === 1) ws.send('ping'); } catch (_) {} }, PING_EVERY);
   }
 
-  // hello: { name, game, build, version, launcher }. Resolves with { code, gamePort }: the game hosts on gamePort.
+  syncHeartbeat() {
+    clearInterval(this.heartbeat);
+    this.heartbeat = null;
+    if (this.role === 'host' && this.listed && !this.closed) {
+      this.heartbeat = setInterval(() => {
+        try { if (this.ws?.readyState === 1 && this.listed) this.ws.send(JSON.stringify({ type: 'heartbeat' })); } catch (_) {}
+      }, HEARTBEAT_EVERY);
+    }
+  }
+
+  setListed(listed) {
+    this.listed = Boolean(listed);
+    if (this.role === 'host' && this.ws?.readyState === 1) {
+      try { this.ws.send(JSON.stringify({ type: 'listed', listed: this.listed })); } catch (_) {}
+    }
+    this.syncHeartbeat();
+    return this.listed;
+  }
+
+  // hello: { name, game, build, version, launcher, listed? }. Resolves with { code, gamePort }: the game hosts on gamePort.
   async host(hello) {
     this.role = 'host';
+    this.listed = Boolean(hello?.listed);
     const { ws, room } = await this.open('/v1/coop/new');
     this.ws = ws; this.code = room.code;
-    ws.send(JSON.stringify({ type: 'hello', protocol: COOP_PROTOCOL, ...hello }));
+    ws.send(JSON.stringify({ type: 'hello', protocol: COOP_PROTOCOL, ...hello, listed: this.listed }));
     this.game = { port: await freePort(this.sockets), address: LOCAL };
     await this.listen();
     this.wire();
+    this.syncHeartbeat();
     return { code: room.code, gamePort: this.game.port };
   }
 
@@ -189,6 +214,7 @@ class CoopRelay extends EventEmitter {
     if (this.closed) return;
     this.closed = true;
     clearInterval(this.ping);
+    clearInterval(this.heartbeat);
     clearTimeout(this.batchTimer);
     try { if (this.ws?.readyState === 1) this.ws.send(JSON.stringify({ type: 'leave' })); } catch (_) {}
     try { this.ws?.close(1000, 'Done'); } catch (_) {}
@@ -196,4 +222,11 @@ class CoopRelay extends EventEmitter {
   }
 }
 
-module.exports = { COOP_PROTOCOL, CoopRelay, parseCode, formatCode, freePort };
+async function listCoopRooms({ url = serverUrl(), fetch = globalThis.fetch } = {}) {
+  const response = await fetch(`${url}/v1/coop`);
+  if (!response.ok) throw new Error('Couldn\'t reach the room server.');
+  const body = await response.json().catch(() => null);
+  return Array.isArray(body?.rooms) ? body.rooms : [];
+}
+
+module.exports = { COOP_PROTOCOL, CoopRelay, listCoopRooms, parseCode, formatCode, freePort };

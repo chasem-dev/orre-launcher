@@ -128,9 +128,18 @@
                   <button id="together-stop" class="subtle" type="button">Close</button>
                 </div>
               </div>
+              <label id="together-listed-row" class="online-check together-public-check" title="Show your co-op room in the Open co-op rooms lobby below so anyone on the same game and version can join."><input id="together-listed" type="checkbox"><span>Show in public lobby</span></label>
             </section>
           </div>
           <p id="together-error" class="helper together-error" role="status" hidden></p>
+          <section class="coop-lobby" aria-labelledby="coop-lobby-title">
+            <div class="online-heading">
+              <h2 id="coop-lobby-title" class="group-title">Open co-op rooms</h2>
+              <button id="together-refresh" class="subtle" type="button" title="Check for public co-op rooms now">Refresh</button>
+            </div>
+            <div id="together-rooms" class="online-room-list" aria-live="polite"></div>
+            <p id="together-rooms-empty" class="helper">No public co-op rooms are open right now. Host your story with "Show in public lobby" checked to list yours.</p>
+          </section>
           <div class="coop-local-strip">
             <div><strong>Local split-screen:</strong> Playing on the same computer? Just press <strong>START</strong> on Player 2's controller in the field.</div>
             <button id="together-split-settings" class="subtle" type="button">Split-screen settings →</button>

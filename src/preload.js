@@ -59,6 +59,8 @@ contextBridge.exposeInMainWorld('colo', {
   onlineSave: value => ipcRenderer.invoke('online-save', value),
   playTogether: value => ipcRenderer.invoke('play-together', value),
   togetherState: () => ipcRenderer.invoke('together-state'),
+  togetherRooms: () => ipcRenderer.invoke('together-rooms'),
+  togetherListed: listed => ipcRenderer.invoke('together-listed', listed),
   togetherCopy: code => ipcRenderer.invoke('together-copy', code),
   togetherStop: () => ipcRenderer.invoke('together-stop'),
   onlineRooms: () => ipcRenderer.invoke('online-rooms'),

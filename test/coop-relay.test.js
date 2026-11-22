@@ -2,7 +2,7 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const dgram = require('node:dgram');
-const { CoopRelay, parseCode, formatCode } = require('../src/coop-relay');
+const { CoopRelay, listCoopRooms, parseCode, formatCode } = require('../src/coop-relay');
 
 // A stand-in for the room server's co-op room (colosseum-server-api src/coop.js): the code and key first, 'peer' to both
 // once both said hello, binary passed to the other side
@@ -88,4 +88,41 @@ test('codes read as the room server reads them', () => {
   assert.strictEqual(parseCode('kq7 m2d'), 'KQ7M2D');
   assert.strictEqual(parseCode('KQ7M2'), null);
   assert.strictEqual(formatCode('KQ7M2D'), 'KQ7-M2D');
+});
+
+test('public co-op rooms can be listed and toggled live while hosting', async () => {
+  const sent = [];
+  class FakeSocket {
+    constructor() {
+      this.readyState = 0; this.listeners = {};
+      setTimeout(() => { this.readyState = 1; this.emit('message', { data: JSON.stringify({ type: 'room', code: 'PUB123', key: 'k' }) }); }, 5);
+    }
+    addEventListener(type, fn, options = {}) { (this.listeners[type] ||= []).push({ fn, once: options.once }); }
+    emit(type, event) {
+      const list = this.listeners[type] || [];
+      this.listeners[type] = list.filter(l => !l.once);
+      for (const l of list) l.fn(event);
+    }
+    send(data) { if (typeof data === 'string' && data !== 'ping') sent.push(JSON.parse(data)); }
+    close() { this.readyState = 3; }
+  }
+  const relay = new CoopRelay({ url: 'http://room', WebSocket: FakeSocket });
+  await relay.host({ ...hello('Wes'), listed: true });
+  assert.strictEqual(sent[0].type, 'hello');
+  assert.strictEqual(sent[0].listed, true);
+  assert.strictEqual(relay.listed, true);
+  relay.setListed(false);
+  assert.deepStrictEqual(sent[1], { type: 'listed', listed: false });
+  assert.strictEqual(relay.listed, false);
+  relay.close();
+
+  const rooms = await listCoopRooms({
+    url: 'http://room',
+    fetch: async url => {
+      assert.strictEqual(url, 'http://room/v1/coop');
+      return { ok: true, status: 200, json: async () => ({ rooms: [{ code: 'PUB123', host: 'Wes', game: 'colosseum', status: 'waiting' }] }) };
+    }
+  });
+  assert.strictEqual(rooms.length, 1);
+  assert.strictEqual(rooms[0].code, 'PUB123');
 });
