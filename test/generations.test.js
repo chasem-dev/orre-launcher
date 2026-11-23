@@ -263,3 +263,47 @@ test("the team builder's categories under generation 4's rules are each move's o
   assert.equal(categories[14], 'Status', 'Swords Dance');
   assert.equal(Object.keys(categories).length, generations.FIRST_NEW_MOVE - 1, 'moves 1 to 354, the numbers Colosseum shares with later games');
 });
+
+test('generations 5 and 6 are available, map Fairy cleanly, and build alongside generation 4 rules', () => {
+  const avail = generations.available();
+  assert.deepEqual(avail.map(g => g.generation), [4, 5, 6]);
+  const [gen4, gen5, gen6] = avail;
+  assert.deepEqual([gen5.newSpecies, gen5.newMoves], [[494, 649], [468, 559]]);
+  assert.deepEqual([gen6.newSpecies, gen6.newMoves], [[650, 721], [560, 621]]);
+
+  for (const g of [5, 6]) {
+    const data = generations.load(g);
+    for (let n = data.newMoves[0]; n <= data.newMoves[1]; n++) {
+      assert.ok(data.moves[n].name in data.colosseum.moves, `gen${g} move #${n} ${data.moves[n].name}`);
+    }
+  }
+
+  // Fairy-type Gen 6 Pokémon fall back cleanly to Psychic when Colosseum has 17 types
+  const game = tables();
+  for (const g of [4, 5, 6]) {
+    const data = generations.load(g);
+    Object.values(data.colosseum.moves).filter(Boolean).forEach((how, i) => {
+      if (!game.moves.has(key(how.as))) game.moves.set(key(how.as), 1 + (i % 300));
+    });
+  }
+  const built = generations.build(game, { battleRules: 4, generationPokemon: [4, 5, 6] });
+  assert.equal(built.species.length, 107 + 156 + 72);
+  const sylveon = built.species.find(s => s.number === 700);
+  assert.equal(sylveon.id, generations.speciesId(700));
+  assert.deepEqual(sylveon.spec.types, ['Psychic']);
+  assert.equal(sylveon.spec.base, 'Ralts');
+  const snivy = built.species.find(s => s.number === 495);
+  assert.equal(snivy.id, generations.speciesId(495));
+  assert.deepEqual(snivy.spec.types, ['Grass']);
+  assert.ok(built.rules.categories[generations.colosseumMove(585)] === 2, 'Moonblast is Special under Gen 4 split');
+});
+
+test('3DS Pokémon models command uses scripts/3ds2pkx/make_models.py', () => {
+  const port = require('../src/port');
+  const path = require('node:path');
+  const cmd = port.usumModelsCommand('/roms/ultrasun.3ds', '/data/usum-models', [494, 495, 650], 'linux', {});
+  assert.equal(cmd.command, 'python3');
+  assert.equal(path.basename(cmd.args[0]), 'make_models.py');
+  assert.equal(path.basename(cmd.cwd), '3ds2pkx');
+  assert.deepEqual(cmd.args.slice(1), ['/roms/ultrasun.3ds', '/data/usum-models', '494', '495', '650']);
+});

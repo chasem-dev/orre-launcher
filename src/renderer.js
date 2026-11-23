@@ -720,7 +720,9 @@ function renderActivity(active) {
   $('view-build-log').textContent = active?.label.startsWith('Build ') ? 'View build log' : 'View activity';
   const pbrNote = pbrProgress(active);
   if (pbrNote) $('pbr-note').textContent = pbrNote;
-  if (current) renderPbrBanner({ ...current, active });
+  const usumNote = usumProgress(active);
+  if (usumNote) $('usum-note').textContent = usumNote;
+  if (current) { renderPbrBanner({ ...current, active }); renderUsumBanner({ ...current, active }); }
   $('task-status').textContent = active ? taskName(active.label)
     : current?.binaryReady && needsTextureDownload(current) ? 'HD setup needed'
     : current?.game.needsUpdate && current.config.completedSetup ? 'Update ready'
@@ -1137,13 +1139,14 @@ function refresh(data) {
   for (const key of [...SELECTS, ...SWITCHES, 'graphicsPreset']) $(key).disabled = Boolean(data.active);
   renderRandomizer(data);
   renderPbr(data);
+  renderUsum(data);
   renderDependents(Boolean(data.active));
   changing = false;
 }
 
 // The settings that are a list or a range, and the ones that are a switch: each saves under its element's id.
 const SELECTS = ['buttonPrompts', 'promptPad', 'battleRules', 'widescreen', 'resolution', 'frameRate', 'vsync', 'fullscreenMode', 'exclusiveResolution', 'display', 'msaa', 'anisotropic', 'sharpen', 'brightness', 'aspect', 'presentFilter', 'fsrMode', 'textureLoading', 'renderer', 'hdText', 'expAllShare', 'language', 'battleSpeed', 'fastForward', 'fastForwardSpeed', 'coopHero', 'coopSplit', 'coopPads', 'padMode', 'updateChannel', 'randomizerSeed'];
-const SWITCHES = ['randomizer', 'randomizerStarters', 'randomizerShadow', 'randomizerTrainers', 'randomizerGifts', 'randomizerGen1', 'randomizerGen2', 'randomizerGen3', 'randomizerGen4', 'randomizerPacks', 'randomizerSimilar', 'randomizerNoLegendaries', 'randomizerNoRepeats', 'randomizerBaseForms', 'generation4Pokemon', 'pbrReplaceAll', 'pbrTextures', 'fullscreen', 'hudEdges', 'skipMovies', 'skipBattleAnimations', 'quickMoves', 'quickStatus', 'shinyShadow', 'shinyStarters', 'chooseHero', 'chooseStarters', 'tmNames', 'infiniteTms', 'expAll', 'cstickMove', 'partnerPass', 'moveRelearner', 'coop', 'pokeSpotPool', 'overlay', 'backgroundInput', 'gbaAutoPower', 'fxaa', 'textures', 'hdModels', 'shaderWarmup', 'autoUpdate', 'autoBackups', 'shareUsage', 'discordPresence', 'darkMode'];
+const SWITCHES = ['randomizer', 'randomizerStarters', 'randomizerShadow', 'randomizerTrainers', 'randomizerGifts', 'randomizerGen1', 'randomizerGen2', 'randomizerGen3', 'randomizerGen4', 'randomizerPacks', 'randomizerSimilar', 'randomizerNoLegendaries', 'randomizerNoRepeats', 'randomizerBaseForms', 'generation4Pokemon', 'generation5Pokemon', 'generation6Pokemon', 'pbrReplaceAll', 'pbrTextures', 'fullscreen', 'hudEdges', 'skipMovies', 'skipBattleAnimations', 'quickMoves', 'quickStatus', 'shinyShadow', 'shinyStarters', 'chooseHero', 'chooseStarters', 'tmNames', 'infiniteTms', 'expAll', 'cstickMove', 'partnerPass', 'moveRelearner', 'coop', 'pokeSpotPool', 'overlay', 'backgroundInput', 'gbaAutoPower', 'fxaa', 'textures', 'hdModels', 'shaderWarmup', 'autoUpdate', 'autoBackups', 'shareUsage', 'discordPresence', 'darkMode'];
 
 // The languages: English, the launcher's packs and any found in the languages folder. One chosen and then
 // removed from the folder stays listed, as the game plays in English without it; so does one this game has no pack
@@ -1606,6 +1609,95 @@ function offerPbrModels() {
   $('pbr-offer-confirm').textContent = pbrDiscUsable(pbr) ? 'Make assets' : pbr.disc ? 'Choose another file' : 'Choose disc';
   closeModal();
   $('pbr-offer').showModal();
+}
+
+// Nintendo 3DS assets (Gen 5–6, scripts/3ds2pkx): decrypted Ultra Sun / Ultra Moon / Sun / Moon .3ds ROM -> PKX models,
+// icons and cries, mirroring the Battle Revolution flow above.
+const USUM_LABEL = 'Make 3DS Pokémon assets';
+function usumProgress(active) {
+  if (active?.label !== USUM_LABEL) return null;
+  const detail = active.detail && active.detail !== 'Starting…' ? active.detail : 'Starting';
+  return `${detail}${Number.isFinite(active.percent) ? ` (${active.percent}%)` : '…'}`;
+}
+function usumRomUsable(usum) { return Boolean(usum?.romFound && !usum.romProblem); }
+
+let usumCheckDismissed = null;
+function usumCheck(usum) {
+  const choice = usum.choice;
+  if (choice && !choice.ok) return { kind: 'error', key: `choice:${choice.at}`, title: `${fileName(choice.file)} can't be used`,
+    detail: `${choice.message}${usum.rom && usumRomUsable(usum) ? ` Your ROM stays ${fileName(usum.rom)}.` : ''}` };
+  if (usum.rom && usum.romProblem) return { kind: 'error', key: `problem:${usum.rom}:${usum.romProblem}`, title: 'Your 3DS Pokémon ROM can\'t be used',
+    detail: `${fileName(usum.rom)}: ${usum.romProblem}` };
+  if (usum.rom && !usum.romFound) return { kind: 'warn', key: `missing:${usum.rom}`, title: 'Your 3DS Pokémon ROM isn\'t where it was',
+    detail: `${usum.rom} can't be found. Choose it again.` };
+  if (choice?.ok && choice.file === usum.rom) return { kind: choice.warning ? 'warn' : 'ok', key: `choice:${choice.at}`,
+    title: choice.warning ? '3DS Pokémon ROM found, but check it' : '3DS Pokémon ROM found', detail: choice.message };
+  return null;
+}
+function renderUsumCheck(id, usum, { dismissible = true } = {}) {
+  const check = usumCheck(usum || {});
+  const show = Boolean(check && !(dismissible && usumCheckDismissed === check.key));
+  $(id).hidden = !show;
+  if (!show) return;
+  $(id).classList.toggle('ok', check.kind === 'ok');
+  $(id).classList.toggle('warn', check.kind === 'warn');
+  $(id).dataset.key = check.key;
+  $(`${id}-title`).textContent = check.title;
+  $(`${id}-detail`).textContent = check.detail;
+}
+function renderUsumBanner(data) {
+  const usum = data.usum || {}, making = Boolean(usumProgress(data.active));
+  const missing = (usum.wanted || 0) - (usum.made || 0) - (usum.outdated || 0) - (usum.noCry || 0);
+  const show = Boolean(usum.supported && usum.wanted && usum.rom && !making && (usum.romProblem || usum.outdated || usum.noCry || (missing > 0 && usum.made > 0)));
+  $('usum-banner').hidden = !show;
+  if (!show) return;
+  const count = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+  $('usum-banner-title').textContent = usum.romProblem ? 'Your 3DS Pokémon ROM can\'t be used'
+    : usum.outdated ? 'Your 3DS Pokémon assets need making again'
+    : !missing && usum.noCry ? 'Your Gen 5–6 Pokémon can have their own cries' : 'Some 3DS Pokémon assets aren\'t made yet';
+  $('usum-banner-detail').textContent = usum.romProblem && usum.romFound
+    ? `${usum.romProblem} Choose it under Settings → Gameplay.`
+    : !usum.romFound ? 'Your 3DS Pokémon ROM isn\'t where it was. Choose it again under Settings → Gameplay, then make them.'
+    : usum.outdated ? `A fix changed ${count(usum.outdated, 'Pokémon\'s model', 'Pokémon\'s models')}. Press Make assets to remake them.`
+    : !missing && usum.noCry ? `${count(usum.noCry, 'Pokémon cries', 'Pokémon cry')} with a stand-in voice.`
+    : `${count(missing, 'Pokémon has', 'Pokémon have')} no 3DS model made yet.`;
+  $('usum-banner-make').textContent = usumRomUsable(usum) ? 'Make assets' : 'Open Settings';
+  $('usum-banner-make').disabled = Boolean(data.active);
+}
+function renderUsum(data) {
+  const usum = data.usum || {};
+  $('usum-note').textContent = usumProgress(data.active)
+    || (!usum.supported ? '3DS model converter scripts are missing from this launcher build.'
+      : !usum.wanted ? 'Turn on Generation 5 Pokémon or Generation 6 Pokémon above, then make their models, icons and cries from your own decrypted Pokémon Ultra Sun, Ultra Moon, Sun or Moon (.3ds) ROM. No Blender needed.'
+        : !usum.rom ? `Choose your own decrypted Pokémon Ultra Sun, Ultra Moon, Sun or Moon (.3ds) ROM and their models, icons and cries are made from it. Until then, each has a Colosseum Pokémon standing in. ${usum.made} of ${usum.wanted} made.`
+          : usum.outdated ? `${usum.rom}: ${usum.made} of ${usum.wanted} made. A fix changed ${usum.outdated} Pokémon's models: press Make assets to make them again.`
+            : `${usum.rom}: ${usum.made} of ${usum.wanted} made. Making them takes a few minutes, and only makes what's missing.`);
+  $('make-usum-models').disabled = Boolean(data.active) || !usum.supported || !usum.wanted || !usumRomUsable(usum);
+  $('choose-usum-rom').disabled = Boolean(data.active);
+  renderUsumCheck('usum-check', usum);
+  renderUsumBanner(data);
+}
+async function chooseUsumRom() {
+  const before = current?.usum?.rom, last = current?.usum?.choice?.at;
+  usumCheckDismissed = null;
+  await action('chooseUsumRom');
+  const usum = current?.usum || {};
+  const choice = usum.choice && usum.choice.at !== last ? usum.choice : null;
+  if (choice?.ok && !current?.active && usumRomUsable(usum) && usum.rom !== before && usum.supported && usum.made < usum.wanted) action('makeUsumModels');
+  return choice;
+}
+function offerUsumModels() {
+  const usum = current?.usum || {};
+  if (!gameHas(current, 'pbrAssets') || current?.active || !usum.supported || !usum.wanted || usum.made >= usum.wanted) return;
+  const remake = usum.made > 0 || usum.outdated > 0 || usum.noCry > 0;
+  $('usum-offer-check').hidden = true;
+  if (usum.rom && !usumRomUsable(usum)) renderUsumCheck('usum-offer-check', usum, { dismissible: false });
+  $('usum-offer-lead').textContent = usumRomUsable(usum)
+    ? `Your 3DS Pokémon ROM is chosen: ${usum.rom}. Make ${remake ? 'what\'s still missing' : 'their models, icons and cries'} from it now? It takes a few minutes.`
+    : 'Each one can have its own 3D model, icons and cry, converted directly from your own decrypted Pokémon Ultra Sun, Ultra Moon, Sun or Moon (.3ds) ROM. Choose it and they\'re made in a few minutes. No Blender needed.';
+  $('usum-offer-confirm').textContent = usumRomUsable(usum) ? 'Make assets' : usum.rom ? 'Choose another file' : 'Choose ROM';
+  closeModal();
+  $('usum-offer').showModal();
 }
 
 // What the randomizer will do, and what the save on the card already is: the save wins.
@@ -2124,8 +2216,15 @@ $('pbr-banner-make').addEventListener('click', () => {
   if (pbrDiscUsable(current?.pbr)) action('makePbrModels');
   else { showPage('settings'); showSettingsTab('gameplay'); }
 });
+$('choose-usum-rom').addEventListener('click', chooseUsumRom);
+$('make-usum-models').addEventListener('click', () => action('makeUsumModels'));
+$('usum-check-close').addEventListener('click', () => { usumCheckDismissed = $('usum-check').dataset.key; $('usum-check').hidden = true; });
+$('usum-banner-make').addEventListener('click', () => {
+  if (usumRomUsable(current?.usum)) action('makeUsumModels');
+  else { showPage('settings'); showSettingsTab('gameplay'); }
+});
 $('open-languages').addEventListener('click', () => window.colo.openLanguages().catch(showError));
-for (const key of [...SELECTS, ...SWITCHES]) if (key !== 'generation4Pokemon' && key !== 'pbrReplaceAll' && key !== 'pbrTextures') $(key).addEventListener('change', saveSettings);
+for (const key of [...SELECTS, ...SWITCHES]) if (key !== 'generation4Pokemon' && key !== 'generation5Pokemon' && key !== 'generation6Pokemon' && key !== 'pbrReplaceAll' && key !== 'pbrTextures') $(key).addEventListener('change', saveSettings);
 // Turned on: the download starts now, unless something else is running (then it starts when you play)
 $('pbrTextures').addEventListener('change', async () => {
   await saveSettings();
@@ -2136,6 +2235,12 @@ $('generation4Pokemon').addEventListener('change', async () => {
   await saveSettings();
   if (current?.config.settings.generation4Pokemon) offerPbrModels();
 });
+for (const key of ['generation5Pokemon', 'generation6Pokemon']) {
+  $(key).addEventListener('change', async () => {
+    await saveSettings();
+    if (current?.config.settings[key]) offerUsumModels();
+  });
+}
 // Replace all models turned on with the disc chosen makes the models at once, as choosing the disc does; without the
 // disc, the Settings row asks for it
 // Turning it on asks first, saying how much longer making the models takes; turning it off doesn't.
@@ -2170,6 +2275,18 @@ $('pbr-offer-confirm').addEventListener('click', async () => {
     $('pbr-offer-confirm').textContent = 'Choose another file';
     if (!$('pbr-offer').open) $('pbr-offer').showModal();
   } finally { $('pbr-offer-confirm').disabled = false; }
+});
+$('usum-offer-confirm').addEventListener('click', async () => {
+  if (usumRomUsable(current?.usum)) { $('usum-offer').close(); action('makeUsumModels'); return; }
+  $('usum-offer-confirm').disabled = true;
+  try {
+    const choice = await chooseUsumRom();
+    if (choice?.ok) { $('usum-offer').close(); return; }
+    if (!choice) return;
+    renderUsumCheck('usum-offer-check', current?.usum, { dismissible: false });
+    $('usum-offer-confirm').textContent = 'Choose another file';
+    if (!$('usum-offer').open) $('usum-offer').showModal();
+  } finally { $('usum-offer-confirm').disabled = false; }
 });
 $('randomizer-reroll').addEventListener('click', async () => {
   try {

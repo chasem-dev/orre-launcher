@@ -70,6 +70,7 @@ function activityFromLine(line) {
   if (/^Downloading the model tools/.test(value)) return { detail: 'Downloading the model tools', percent: null };
   if (/^Preparing the model tools/.test(value)) return { detail: 'Preparing the model tools', percent: null };
   if (value === 'Reading your Battle Revolution disc') return { detail: 'Reading your Battle Revolution disc', percent: null };
+  if (value === 'Reading your 3DS Pokémon ROM') return { detail: 'Reading your 3DS Pokémon ROM', percent: null };
   if (/^Making models for \d+ Pokémon$/.test(value)) return { detail: 'Making Battle Revolution assets', percent: 0 };
   const pbr = value.match(/^Made (\d+) of (\d+) Pokémon$/);
   if (pbr) {

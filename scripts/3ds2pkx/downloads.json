@@ -1,0 +1,9 @@
+{
+  "about": "What the launcher downloads to run 3ds2pkx: StarsMmd's Blender-Addon-Gamecube-Models (GPL-3.0), whose compose, serialize and package phases write the .pkx models. Pinned with its SHA-256 (shared with pbr2pkx when already downloaded).",
+  "addon": {
+    "repository": "https://github.com/StarsMmd/Blender-Addon-Gamecube-Models",
+    "commit": "dc71de837978a6a2fe8c5082f2840cfafb135235",
+    "url": "https://codeload.github.com/StarsMmd/Blender-Addon-Gamecube-Models/tar.gz/dc71de837978a6a2fe8c5082f2840cfafb135235",
+    "sha256": "db046589b6dd7eb3517d485d38bc1412e800f410e32e4369350ee8ac4a7bcee6"
+  }
+}

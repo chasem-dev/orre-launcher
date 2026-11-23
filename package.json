@@ -35,7 +35,8 @@
           "build-colosseum.sh",
           "install-textures.py",
           "port-launcher.patch",
-          "port-launcher-libc.patch"
+          "port-launcher-libc.patch",
+          "3ds2pkx/**/*"
         ]
       }
     ],

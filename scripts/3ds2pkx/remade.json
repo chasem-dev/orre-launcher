@@ -1,0 +1,5 @@
+{
+  "comment": "The 3DS-to-PKX converter's version, and the Pokémon (National Pokédex numbers) whose models each version changed. make_pack.py --keep makes these again where a folder's models-version.txt is older; the launcher counts them as not made until then.",
+  "version": 1,
+  "remade": {}
+}

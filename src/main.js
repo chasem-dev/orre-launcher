@@ -10,6 +10,7 @@ const port = require('./port');
 const gameSettings = require('./game-settings');
 const games = require('./games');
 const pbrDisc = require('./pbr-disc');
+const usumRom = require('./usum-rom');
 const saves = require('./saves');
 const gciSave = require('./gci-save');
 const buildTools = require('./build-tools');
@@ -298,6 +299,8 @@ function loadConfig() {
     ...games.loadGames(saved, gameFieldOptions),
     // The player's Pokémon Battle Revolution disc file, for its models (makePbrModels)
     pbrDisc: typeof saved.pbrDisc === 'string' ? saved.pbrDisc : '',
+    // The player's decrypted 3DS Pokémon ROM (Ultra Sun/Ultra Moon/Sun/Moon), for Gen 5-6 models (makeUsumModels)
+    usumRom: typeof saved.usumRom === 'string' ? saved.usumRom : '',
     settings: port.turnOnQuickBattles(port.moveToMetal(port.normalizeSettings(saved.settings || {}), saved.movedToMetal), saved.quickBattlesOn),
     // Quick moves and Quick status effects have turned on once for a config saved while they were off by default.
     quickBattlesOn: true,
@@ -1155,7 +1158,7 @@ function readPokemonPacks(rom, settings = config.settings) {
   const packs = fs.existsSync(pokemonPacksDirectory())
     ? pokemonPacks.loadPacks(pokemonPacksDirectory(), tables, pokemonPacks.readRegistry(currentSaveDirectory()))
     : { pokemon: [], problems: [], registry: { ids: {} }, registryChanged: false, missing: [] };
-  const built = generations.build(tables, settings), fromGenerations = pokemonPacks.generationPokemon(tables, built, { modelsDirectory: pbrModels() });
+  const built = generations.build(tables, settings), fromGenerations = pokemonPacks.generationPokemon(tables, built, { modelsDirectory: pbrModels(), modelsDirectories: { 4: pbrModels(), 5: usumModels(), 6: usumModels() } });
   // the game's own Pokémon as the generation has them (its level-up moves, and evolutions into its Pokémon), and with the
   // packs' evolutions into theirs ("evolvesFrom")
   const own = pokemonPacks.ownRows(tables, built, fromGenerations.pokemon, packs.pokemon);
@@ -1235,6 +1238,7 @@ function pbrReplacing(settings = config.settings) { return Boolean(settings.pbrR
 function pbrWanted(settings = config.settings) {
   const numbers = [];
   for (const generation of settings.generationPokemon || []) {
+    if (generation !== 4) continue;
     const [first, last] = generations.load(generation).newSpecies;
     for (let n = first; n <= last; n++) numbers.push(n);
   }
@@ -1277,6 +1281,59 @@ async function makePbrModels() {
   await launch(cmd.command, cmd.args, { cwd: cmd.cwd, env: cmd.env }, 'Make Battle Revolution assets');
   const { made } = pbrState();
   log(`Battle Revolution assets: ${made} of ${wanted.length} Pokémon made. They show in the Pokédex, and in your next game.`);
+  return state();
+}
+
+// --- Nintendo 3DS assets (scripts/3ds2pkx): the player's own decrypted Ultra Sun / Ultra Moon / Sun / Moon .3ds ROM,
+// made into GameCube models, icons and cries for Generation 5 and Generation 6 Pokémon.
+function usumWork() { return path.join(app.getPath('userData'), 'usum-models'); }
+let usumRomChoice = null;
+let usumRomProblemCache = null;
+function usumRomProblem() {
+  const file = config.usumRom;
+  if (!file) return '';
+  let stat;
+  try { stat = fs.statSync(file); } catch { return ''; }
+  const key = `${file}\0${stat.size}\0${stat.mtimeMs}`;
+  if (usumRomProblemCache?.key !== key) {
+    let problem = '';
+    try { usumRom.validate(file); } catch (error) { problem = error.message; }
+    usumRomProblemCache = { key, problem };
+  }
+  return usumRomProblemCache.problem;
+}
+function usumModels() { return path.join(usumWork(), 'models'); }
+function usumWanted(settings = config.settings) {
+  const numbers = [];
+  for (const generation of settings.generationPokemon || []) {
+    if (generation < 5) continue;
+    const [first, last] = generations.load(generation).newSpecies;
+    for (let n = first; n <= last; n++) numbers.push(n);
+  }
+  return numbers;
+}
+function usumState() {
+  const wanted = usumWanted(), present = wanted.filter(n => fs.existsSync(path.join(usumModels(), String(n), pokemonPacks.FILES.model)));
+  const outdated = port.usumOutdated(usumModels(), present);
+  const noCry = present.filter(n => !outdated.has(n) && !fs.existsSync(path.join(usumModels(), String(n), pokemonPacks.FILES.cry))).length;
+  return { rom: config.usumRom || null, romFound: Boolean(config.usumRom && fs.existsSync(config.usumRom)),
+    romProblem: usumRomProblem(), choice: usumRomChoice,
+    wanted: wanted.length, made: present.length - outdated.size - noCry, outdated: outdated.size, noCry, cries: true,
+    supported: fs.existsSync(port.usumModelsScript()) };
+}
+async function makeUsumModels() {
+  requireFeature('pbrAssets', '3DS Pokémon assets');
+  const wanted = usumWanted();
+  if (!config.usumRom || !fs.existsSync(config.usumRom)) throw new Error('Choose your decrypted 3DS Pokémon ROM file first.');
+  const problem = usumRomProblem();
+  if (problem) throw new Error(`Your 3DS Pokémon ROM can't be used: ${problem}`);
+  if (!wanted.length) throw new Error('Turn on Generation 5 Pokémon or Generation 6 Pokémon first: their models, icons and cries are what this makes.');
+  if (!fs.existsSync(port.usumModelsScript())) throw new Error('The 3DS model converter scripts are missing from this launcher build.');
+  await ensureBuildTools();
+  const cmd = port.usumModelsCommand(config.usumRom, usumWork(), wanted, process.platform, toolEnv());
+  await launch(cmd.command, cmd.args, { cwd: cmd.cwd, env: cmd.env }, 'Make 3DS Pokémon assets');
+  const { made } = usumState();
+  log(`3DS Pokémon assets: ${made} of ${wanted.length} Pokémon made. They show in the Pokédex, and in your next game.`);
   return state();
 }
 
@@ -1335,7 +1392,7 @@ function preparePokemonPacks(rom, folder) {
 function prepareBattleRules(rom, folder, battleRules) {
   if (packTables?.rom !== rom) packTables = { rom, tables: pokemonPacks.readGameTables(rom) };
   const built = generations.build(packTables.tables, { battleRules, generationPokemon: [battleRules] });
-  const { pokemon, problems } = pokemonPacks.generationPokemon(packTables.tables, built, { modelsDirectory: pbrModels() });
+  const { pokemon, problems } = pokemonPacks.generationPokemon(packTables.tables, built, { modelsDirectory: pbrModels(), modelsDirectories: { 4: pbrModels(), 5: usumModels(), 6: usumModels() } });
   for (const problem of problems) log(`Generation ${battleRules} Pokémon ${packLabel(problem)}: ${problem.message}`);
   const looks = pbrOwnModels(packTables.tables);
   const file = path.join(folder, 'online-rules.bin');
@@ -1495,15 +1552,16 @@ let pokedexPacks = new Map();   // key -> the pack Pokémon, for its model
 let generationDexCache = null;
 function generationDex(rom, generation = 4) {
   if (packTables?.rom !== rom) packTables = { rom, tables: pokemonPacks.readGameTables(rom) };
-  const made = n => fs.existsSync(path.join(pbrModels(), String(n), pokemonPacks.FILES.model)) && fs.existsSync(path.join(pbrModels(), String(n), pokemonPacks.FILES.body));
-  const built = generations.build(packTables.tables, { battleRules: generation, generationPokemon: [generation] });
+  const modelsDir = generation >= 5 ? usumModels() : pbrModels();
+  const made = n => fs.existsSync(path.join(modelsDir, String(n), pokemonPacks.FILES.model)) && fs.existsSync(path.join(modelsDir, String(n), pokemonPacks.FILES.body));
+  const built = generations.build(packTables.tables, { battleRules: generation === 4 ? 4 : generations.COLOSSEUM_RULES, generationPokemon: [generation] });
   const { pokemon } = pokemonPacks.generationPokemon(packTables.tables, built);
   const stamp = `${rom}:${generation}:${pokemon.filter(each => made(each.national)).map(each => each.national).join(',')}`;
   if (generationDexCache?.stamp === stamp) return generationDexCache.list;
   const disc = withHdSprites(rom, pokedexData.list(rom));
   const list = pokemonPacks.pokedexEntries(pokemon, packTables.tables).map((entry, i) => {
     const each = pokemon[i];
-    const sprite = made(each.national) ? `data:image/png;base64,${fs.readFileSync(path.join(pbrModels(), String(each.national), pokemonPacks.FILES.body)).toString('base64')}`
+    const sprite = made(each.national) ? `data:image/png;base64,${fs.readFileSync(path.join(modelsDir, String(each.national), pokemonPacks.FILES.body)).toString('base64')}`
       : disc.find(item => item.national === each.base.national)?.sprite || null;
     return { id: each.id, name: entry.name, national: each.national, types: entry.types, abilities: entry.abilities, stats: entry.stats, sprite, generation };
   });
@@ -3570,6 +3628,7 @@ function state() {
     hdVisualsReady: repoReady && hdVisualsReady(config.repo, config.settings),
     texturesInstalled: repoReady && supports('hdTextures') && port.texturePackInstalled(config.repo, config.game),
     pbr: pbrState(),
+    usum: usumState(),
     texturePack: (pack => pack && { size: pack.size, unpacked: pack.unpacked })(port.texturePack(config.game)) || { size: 0, unpacked: 0 },
     languages: languagePacks.choices(languageFolder(), languagePacks.catalogFor(config.game), config.settings.language),
     // Whether this game has packs the launcher downloads, or only ones put in its folder (fan translations)
@@ -4107,6 +4166,28 @@ function registerHandlers() {
     saveConfig();
     return state();
   });
+  ipcMain.handle('choose-usum-rom', async () => {
+    if (operation || active) throw new Error('Finish the current task before changing game files.');
+    const chosen = await dialog.showOpenDialog(window, {
+      title: 'Choose your decrypted Pokémon Ultra Sun, Ultra Moon, Sun or Moon (.3ds) ROM',
+      properties: ['openFile'],
+      filters: [{ name: 'Nintendo 3DS ROMs', extensions: ['3ds', 'cci'] }, { name: 'All files', extensions: ['*'] }]
+    });
+    if (chosen.canceled) return state();
+    const file = chosen.filePaths[0];
+    let rom;
+    try { rom = usumRom.validate(file); }
+    catch (error) {
+      usumRomChoice = { ok: false, file, message: error.message, at: Date.now() };
+      log(`3DS Pokémon ROM not used: ${file}: ${error.message}`);
+      return state();
+    }
+    config.usumRom = rom.file;
+    usumRomChoice = { ok: true, warning: Boolean(rom.warning), file: rom.file, message: usumRom.describe(rom), at: Date.now() };
+    log(`3DS Pokémon ROM chosen: ${rom.file}: ${usumRom.describe(rom)}`);
+    saveConfig();
+    return state();
+  });
   // The Game Boy Advance's files: what is chosen is checked, and kept only if the game can use it. A socket's
   // save comes first (a virtual GBA answers from it); its Game Pak and the BIOS are optional.
   const setGbaSocket = (socket, change) => {
@@ -4203,6 +4284,7 @@ function registerHandlers() {
     'update-port': ['Update game', updatePort], 'install-textures': ['Install HD textures', () => installTextures()],
     'install-pbr-textures': ['Install Battle Revolution HD textures', installPbrTextures], 'build': ['Build game', () => build(true)],
     'make-pbr-models': ['Make Battle Revolution assets', makePbrModels],
+    'make-usum-models': ['Make 3DS Pokémon assets', makeUsumModels],
     'setup-game': ['Build game', setupGame], 'prepare-game': ['Prepare game', prepareGame], 'play': [playLabel, playInstalled],
     'launch-game': ['Prepare game', () => launchGame()], 'update-and-play': ['Prepare game', () => launchGame(true)],
     'play-previous': [playLabel, () => {

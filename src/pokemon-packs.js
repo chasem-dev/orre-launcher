@@ -812,7 +812,7 @@ function compile(contents) {
 }
 
 // A converted Pokémon's own model, icons and cry, as a pack's are, or none. A cry that can't be read is left out.
-function ownLooks(folder, tables) {
+function ownLooks(folder, tables, { faceReader = battleRevolutionFace } = {}) {
   const file = name => { const at = path.join(folder, name); return fs.existsSync(at) ? fs.readFileSync(at) : null; };
   const cryAt = path.join(folder, FILES.cry), wav = fs.existsSync(cryAt) && fs.statSync(cryAt).size <= MAX_WAV ? fs.readFileSync(cryAt) : null;
   let cry = null;
@@ -829,7 +829,7 @@ function ownLooks(folder, tables) {
     assets: { model, modelShiny: file(FILES.modelShiny) || undefined,
       body: body ? sprite(() => spriteFile('body', tables.headers.body, body)) : undefined,
       bodyShiny: bodyShiny ? sprite(() => spriteFile('body', tables.headers.body, bodyShiny)) : undefined,
-      face: face ? sprite(() => spriteFile('face', tables.headers.face, face, faceShiny, battleRevolutionFace)) : undefined },
+      face: face ? sprite(() => spriteFile('face', tables.headers.face, face, faceShiny, faceReader)) : undefined },
     images: { body, bodyShiny, face }, icon: boxIconOrNone(body, bodyShiny), cry, converted: true
   };
 }
@@ -860,7 +860,7 @@ function ownModels(tables, modelsDirectory, numbers = OWN_NATIONALS) {
 // for their looks with a Pokémon Colosseum has, and with that generation's new moves among the moves they can learn.
 // modelsDirectory: where Battle Revolution models are made (src/pbr-models.js), a folder for each National Pokédex number
 // with model.pkx, model-shiny.pkx and its icons: a Pokémon with one has its own looks there instead of a stand-in's.
-function generationPokemon(tables, built, { modelsDirectory = null } = {}) {
+function generationPokemon(tables, built, { modelsDirectory = null, modelsDirectories = null } = {}) {
   const generationsLib = require('./generations');
   // the generation's moves, and its abilities where its rules are on (the game has them then: host/gen4.c)
   const withMoves = { ...tables, moves: new Map([...tables.moves, ...built.moves.map(move => [key(move.name), move.id])]),
@@ -874,9 +874,13 @@ function generationPokemon(tables, built, { modelsDirectory = null } = {}) {
   for (const { id, number, generation, spec } of built.species) {
     try {
       const made = buildRow(spec, withMoves, target);
-      const own = modelsDirectory ? ownLooks(path.join(modelsDirectory, String(number)), tables) : { assets: {}, images: {}, cry: null };
+      const is3ds = generation >= 5;
+      const dir = modelsDirectories?.[generation] ?? (!is3ds ? modelsDirectory : null);
+      const own = dir ? ownLooks(path.join(dir, String(number)), tables, { faceReader: is3ds ? decodePng : battleRevolutionFace }) : { assets: {}, images: {}, cry: null };
       pokemon.push({ pack: `generation-${generation}`, folder: String(number), key: `generation:${number}`, id, ...made, national: number,
-        ...own, packName: `Generation ${generation}`, author: '', credits: 'Pokémon Showdown\'s data (MIT)', generation });
+        ...own, packName: `Generation ${generation}`, author: '',
+        credits: is3ds ? 'StarsMmd\'s Blender-Addon-Gamecube-Models (GPL-3.0) & SPICA' : 'Pokémon Showdown\'s data (MIT)',
+        generation, assetSource: is3ds ? '3ds' : 'pbr' });
     } catch (error) {
       problems.push({ pack: `generation-${generation}`, entry: `#${number} ${spec.name}`, message: error.message });
     }
@@ -1074,13 +1078,17 @@ function laterAbility(id) {
 
 // Where a later generation's Pokémon's looks and cry are from, for the Pokédex.
 function generationNote(each) {
-  const start = `Added by the Generation ${each.generation} Pokémon setting`, end = 'From Pokémon Showdown\'s data.';
+  const is3ds = each.assetSource === '3ds' || each.generation >= 5;
+  const source = is3ds ? '3DS Pokémon ROM' : 'Battle Revolution disc';
+  const assetsName = is3ds ? '3DS Pokémon assets' : 'Battle Revolution assets';
+  const start = `Added by the Generation ${each.generation} Pokémon setting`;
+  const end = is3ds ? 'From your 3DS Pokémon ROM.' : 'From Pokémon Showdown\'s data.';
   if (each.converted) {
-    const made = `with its ${each.cry ? 'model, icons and cry' : 'model and icons'} from your Battle Revolution disc (StarsMmd's Blender-Addon-Gamecube-Models writes the models)`;
+    const made = `with its ${each.cry ? 'model, icons and cry' : 'model and icons'} from your ${source} (StarsMmd's Blender-Addon-Gamecube-Models writes the models)`;
     return `${start}, ${made}.${each.cry ? '' : ` ${each.base.name}'s cry stands in for its own.`} ${end}`;
   }
-  if (each.cry) return `${start}, with its cry from your Battle Revolution disc. ${each.base.name} stands in for its looks until its Battle Revolution assets are made. ${end}`;
-  return `${start}. ${each.base.name} stands in for its looks and cry until its Battle Revolution assets are made. ${end}`;
+  if (each.cry) return `${start}, with its cry from your ${source}. ${each.base.name} stands in for its looks until its ${assetsName} are made. ${end}`;
+  return `${start}. ${each.base.name} stands in for its looks and cry until its ${assetsName} are made. ${end}`;
 }
 
 // A row's evolutions as the Pokédex names them: what each evolves into (a loaded Pokémon's key, else the game's

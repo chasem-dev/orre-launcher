@@ -675,6 +675,28 @@ function pbrModelsCommand(root, disc, work, numbers, platform = process.platform
   return { command: path.join(msys, 'mingw64', 'bin', 'python.exe'), args, cwd: path.dirname(args[0]), env: msysEnvironment(msys, environment) };
 }
 
+// Nintendo 3DS Pokémon models (scripts/3ds2pkx, for Generations 5 and 6): directly from a decrypted Ultra Sun / Ultra
+// Moon / Sun / Moon .3ds ROM, using the same build tools' Python.
+function usumModelsScript() { return launcherScript(path.join('3ds2pkx', 'make_models.py')); }
+function usumOutdated(models, numbers) {
+  let remade;
+  try { remade = JSON.parse(fs.readFileSync(launcherScript(path.join('3ds2pkx', 'remade.json')), 'utf8')).remade; } catch { return new Set(); }
+  if (!remade || typeof remade !== 'object') return new Set();
+  const outdated = new Set();
+  for (const number of numbers) {
+    let madeBy = 1;
+    try { madeBy = parseInt(fs.readFileSync(path.join(models, String(number), 'models-version.txt'), 'utf8'), 10) || 1; } catch { /* first version */ }
+    if (Object.entries(remade).some(([version, changed]) => Number(version) > madeBy && Array.isArray(changed) && changed.includes(number))) outdated.add(number);
+  }
+  return outdated;
+}
+function usumModelsCommand(rom, work, numbers, platform = process.platform, environment = process.env) {
+  const args = [usumModelsScript(), rom, work, ...numbers.map(String)];
+  if (platform !== 'win32') return { command: 'python3', args, cwd: path.dirname(args[0]), env: environment };
+  const { msys } = msysBash(environment);
+  return { command: path.join(msys, 'mingw64', 'bin', 'python.exe'), args, cwd: path.dirname(args[0]), env: msysEnvironment(msys, environment) };
+}
+
 // The system's libdrm_amdgpu, for the game to load before anything else on Linux. The game's graphics
 // drivers are the system's, and a newer Mesa needs this library from the same system: RADV 26.2 on a
 // Steam Deck calls amdgpu_va_manager_query_sw_info, which the build tools' older copy (2.4.129) lacks.
@@ -739,4 +761,5 @@ module.exports = { PORT_URL, TEXTURE_PACK, PBR_TEXTURE_PACK, texturePack, gameAr
   texturePackDirectory, texturePackInstalled, hdVisualsInstalled, dropLeftOutTextures, customTextureDirectory, customTexturesPresent, texturePackFolders,
   pbrTextureDirectory, pbrTexturesInstalled, pbrTextureFolder, pbrTextureCommand,
   buildEnvironment, binaryPath, longPathProblem, pathCharacterProblem, nonAsciiPathProblem, playableInstall, useLauncherScripts, launcherScript,
-  gameBuildEnvironment, buildCommand, textureCommand, pbrModelsScript, pbrModelsCommand, pbrOutdated, pbrMakesCries, playsOwnModels, playsPackCries, gameRunCommand, gameRuntimeFolders, systemLibdrmAmdgpu };
+  gameBuildEnvironment, buildCommand, textureCommand, pbrModelsScript, pbrModelsCommand, pbrOutdated, pbrMakesCries, playsOwnModels, playsPackCries,
+  usumModelsScript, usumModelsCommand, usumOutdated, gameRunCommand, gameRuntimeFolders, systemLibdrmAmdgpu };

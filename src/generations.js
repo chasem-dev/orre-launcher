@@ -22,6 +22,7 @@ const path = require('node:path');
 
 const DIRECTORY = path.join(__dirname, 'generations');
 const COLOSSEUM_RULES = 3;
+const SUPPORTED_BATTLE_RULES = new Set([4]);
 const MOVE_OFFSET = 3, FIRST_NEW_MOVE = 355, SPECIES_OFFSET = 26;
 const SAME_ABILITIES = 75;   // Stench to Shell Armor: the same numbers in Ruby and later (Ruby's 76 is Cacophony)
 const FEATURES = { physicalSpecialSplit: 1, sandstormRockSpecialDefense: 2 };
@@ -41,7 +42,7 @@ const STAND_INS = {
   Flying: ['Taillow', 'Swellow', 'Swellow'], Psychic: ['Ralts', 'Kirlia', 'Gardevoir'], Rock: ['Aron', 'Lairon', 'Aggron'],
   Ground: ['Trapinch', 'Vibrava', 'Flygon'], Ghost: ['Shuppet', 'Banette', 'Dusclops'], Ice: ['Snorunt', 'Glalie', 'Glalie'],
   Dragon: ['Bagon', 'Shelgon', 'Salamence'], Dark: ['Poochyena', 'Mightyena', 'Absol'], Steel: ['Beldum', 'Metang', 'Metagross'],
-  Poison: ['Gulpin', 'Swalot', 'Swalot'], Fighting: ['Makuhita', 'Hariyama', 'Hariyama']
+  Poison: ['Gulpin', 'Swalot', 'Swalot'], Fighting: ['Makuhita', 'Hariyama', 'Hariyama'], Fairy: ['Ralts', 'Kirlia', 'Gardevoir']
 };
 
 const key = text => String(text).toLowerCase().replace(/[\s_]+/g, ' ').replace(/é/g, 'e').trim();
@@ -69,7 +70,7 @@ function load(generation) {
 // are imported.
 function normalize(input = {}) {
   const known = new Set(available().map(each => each.generation));
-  const rules = known.has(Number(input.battleRules)) ? Number(input.battleRules) : COLOSSEUM_RULES;
+  const rules = known.has(Number(input.battleRules)) && SUPPORTED_BATTLE_RULES.has(Number(input.battleRules)) ? Number(input.battleRules) : COLOSSEUM_RULES;
   const pokemon = [...new Set((Array.isArray(input.generationPokemon) ? input.generationPokemon : []).map(Number).filter(n => known.has(n)))].sort();
   return { battleRules: rules, generationPokemon: pokemon };
 }
@@ -102,10 +103,17 @@ function learnMoveTable(tables, data) {
   return { targets, neverMiss: Object.keys(misses).length ? top(misses) : 0 };
 }
 
+function typeIndex(typeName, tables) {
+  const idx = tables.types.indexOf(key(typeName));
+  if (idx >= 0) return idx;
+  if (key(typeName) === 'fairy') return tables.types.indexOf('psychic');
+  return -1;
+}
+
 // A move's numbers and flags written into a row (a copy of another's, or its own). A range Colosseum has no move of
 // keeps the row's.
 function writeMove(row, move, learned, tables, { power = move.power, chance = move.effectChance } = {}) {
-  const type = tables.types.indexOf(key(move.type));
+  const type = typeIndex(move.type, tables);
   row[MV.priority] = move.priority & 0xff;
   row[MV.pp] = move.pp;
   if (type >= 0) row[MV.type] = type;
@@ -146,7 +154,7 @@ function newMoves(tables, data) {
     // Who it's aimed at, where no move of Colosseum's has its range (Acupressure: the user or its partner).
     if (how.target !== undefined) row[MV.target] = how.target;
     out.push({ id: colosseumMove(number), number, name: move.name.toUpperCase().slice(0, 12), description: move.description,
-      row, exact: Boolean(how.exact), note: how.note || '', as: how.as });
+      row, category: move.category, exact: Boolean(how.exact), note: how.note || '', as: how.as });
   }
   return out;
 }
@@ -160,7 +168,10 @@ function rules(tables, data, moves) {
   const highest = Math.max(FIRST_NEW_MOVE, ...moves.map(move => move.id + 1));
   const categories = Buffer.alloc(highest);
   for (let id = 1; id < FIRST_NEW_MOVE; id++) if (data.moves[id]) categories[id] = CATEGORY[data.moves[id].category];
-  for (const move of moves) categories[move.id] = CATEGORY[data.moves[move.number].category];
+  for (const move of moves) {
+    const category = move.category ?? data.moves[move.number]?.category;
+    if (category) categories[move.id] = CATEGORY[category];
+  }
   const learned = learnMoveTable(tables, data), changed = [];
   for (let id = 1; id < FIRST_NEW_MOVE; id++) {
     const move = data.moves[id], row = tables.moveRows[id];
@@ -264,9 +275,11 @@ function speciesSpec(tables, data, number, moves, ownAbilities) {
   if (!abilities.length) abilities.push(...entry.abilities.map(name => data.colosseum.abilities[name]).filter(Boolean));
   const moveList = levelUpMoves(entry, usable);
   const evolutions = entry.evolutions.map(evolution => evolutionOf(data, evolution, usable)).filter(Boolean);
-  const types = [...new Set(entry.types)];
+  const hasFairy = tables.types.includes('fairy');
+  const rawTypes = [...new Set(entry.types)];
+  const types = [...new Set(rawTypes.map(t => (!hasFairy && key(t) === 'fairy' ? 'Psychic' : t)))];
   return {
-    base: (STAND_INS[types[0]] || STAND_INS.Normal)[stageOf(data, number) - 1],
+    base: (STAND_INS[rawTypes[0]] || STAND_INS.Normal)[stageOf(data, number) - 1],
     name: entry.name.toUpperCase().slice(0, 10), national: number,
     description: `Generation ${data.generation}, National Pokédex #${number}.`,
     types, stats: entry.stats, ...(entry.evYield ? { evYield: entry.evYield } : {}),
@@ -292,6 +305,7 @@ function build(tables, settings) {
   const chosen = normalize(settings), out = { rules: null, moves: [], abilities: [], species: [], ownSpecies: [], notes: [] };
   const generations = new Set([...chosen.generationPokemon, ...(chosen.battleRules > COLOSSEUM_RULES ? [chosen.battleRules] : [])]);
   const movesOf = new Map();
+  const ownById = new Map();
   for (const generation of [...generations].sort()) {
     const data = load(generation), moves = newMoves(tables, data);
     movesOf.set(generation, moves);
@@ -302,11 +316,21 @@ function build(tables, settings) {
       for (let n = data.newAbilities[0]; n <= data.newAbilities[1]; n++) if (data.abilities[n]) out.abilities.push([data.abilities[n].name, colosseumAbility(n)]);
     if (chosen.generationPokemon.includes(generation)) {
       for (let number = data.newSpecies[0]; number <= data.newSpecies[1]; number++)
-        if (data.species[number]) out.species.push({ id: speciesId(number), number, generation, spec: speciesSpec(tables, data, number, moves, chosen.battleRules >= generation) });
-      // and the game's own Pokémon learn and evolve as in that generation (the latest chosen, when there are more)
-      out.ownSpecies = ownSpecies(tables, data, moves);
+        if (data.species[number]) out.species.push({ id: speciesId(number), number, generation, spec: speciesSpec(tables, data, number, out.moves, chosen.battleRules >= generation) });
+      // Merge the game's own Pokémon level-up moves & evolutions across enabled generations so turning on Gen 5/6
+      // alongside Gen 4 keeps Gen 4 evolutions (e.g. Yanma -> Yanmega) while adding Gen 6's (Eevee -> Sylveon).
+      for (const own of ownSpecies(tables, data, out.moves)) {
+        const existing = ownById.get(own.id);
+        if (!existing) ownById.set(own.id, own);
+        else {
+          const seen = new Set(existing.evolutions.map(e => JSON.stringify(e)));
+          for (const ev of own.evolutions) if (!seen.has(JSON.stringify(ev))) { existing.evolutions.push(ev); seen.add(JSON.stringify(ev)); }
+          existing.levelUp = own.levelUp;
+        }
+      }
     }
   }
+  out.ownSpecies = [...ownById.values()];
   if (chosen.battleRules > COLOSSEUM_RULES) out.rules = rules(tables, load(chosen.battleRules), out.moves);
   return out;
 }

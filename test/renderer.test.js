@@ -86,7 +86,7 @@ async function renderer(data = state(), copyError = null, notes = { releases: []
       addEventListener(event, callback) { (listeners.window ||= {})[event] = [...(listeners.window[event] || []), callback]; }, removeEventListener() {}, ...extra }, document: {
     getElementById(id) { assert.ok(elements.has(id), `Missing HTML element ${id}`); return elements.get(id); },
     querySelectorAll(selector) {
-      const modals = ['mac-tools-help', 'path-too-long', 'pbr-offer'].map(id => elements.get(id));
+      const modals = ['mac-tools-help', 'path-too-long', 'pbr-offer', 'usum-offer'].map(id => elements.get(id));
       return selector === '.launcher-modal' ? modals : selector === '.launcher-modal[open]' ? modals.filter(modal => modal.open)
         : selector === '[data-feature]' ? featured : [];
     }, createElement: () => element()
