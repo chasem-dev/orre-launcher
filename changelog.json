@@ -48,7 +48,8 @@
       "Fixed the trade window showing the wrong gender, and some move and item names, for Generation 4 Pokémon in XD, such as Bonsly.",
       "Difficulty, under Gameplay: raise the story's trainers' levels by up to 50%, evolve their Pokémon to fit their level, give trainers with small teams more Pokémon, and add up to 48 more Shadow Pokémon to snag on story trainers, in Colosseum and XD. Each is off unless you turn it on.",
       "Trade from the start, under Settings, Game Boy Advance: on by default, the Trade Center trades with your GBA save before the story's end. Turn it off to wait as in the original game.",
-      "Difficulty: Trainers' levels can now be higher than your strongest Pokémon instead of the game's own levels, so the story's trainers keep up as your team levels up. Choose it under Gameplay, Higher than."
+      "Difficulty: Trainers' levels can now be higher than your strongest Pokémon instead of the game's own levels, so the story's trainers keep up as your team levels up. Choose it under Gameplay, Higher than.",
+      "Settings: the Gameplay tab is sorted into Story, Battles, Pokémon and Challenge, with buttons at the top that jump to each and stay in view as you scroll, and a search box at the top of Settings finds any setting as you type. Ctrl+F (Cmd+F on a Mac) goes to it."
     ],
     "game": [
       "120 fps in Colosseum and XD: characters, the camera and fades move twice as smoothly, menu text stays steady, Snag Balls play out in full, and the game keeps its normal speed.",

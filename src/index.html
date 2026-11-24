@@ -454,6 +454,7 @@
       <div class="modal-head"><div><h1>Settings</h1><p>Changes save automatically.</p></div></div>
       <div class="settings-layout">
         <nav class="settings-nav" role="tablist" aria-label="Settings sections" aria-orientation="vertical">
+          <label class="settings-search"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5"/><path d="m13 13 4 4"/></svg><input id="settings-search" type="search" placeholder="Search settings" aria-label="Search settings" spellcheck="false"></label>
           <button id="tab-gameplay" class="settings-tab" role="tab" aria-controls="pane-gameplay" aria-selected="true"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m10 2.8 2.2 4.5 5 .7-3.6 3.5.9 5-4.5-2.4-4.5 2.4.9-5L2.8 8l5-.7z"/></svg>Gameplay</button>
           <button id="tab-display" class="settings-tab" role="tab" aria-controls="pane-display" aria-selected="false"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="2.5" y="3.5" width="15" height="10" rx="1.5"/><path d="M7 17h6M10 13.5V17"/></svg>Display</button>
           <button id="tab-graphics" class="settings-tab" role="tab" aria-controls="pane-graphics" aria-selected="false"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="2.5" y="3.5" width="15" height="13" rx="2"/><circle cx="7.5" cy="8" r="1.5"/><path d="m3 15 4.5-4.5 3 3 2.5-2.5 4.5 4.5"/></svg>Graphics</button>
@@ -465,31 +466,81 @@
         </nav>
 
         <div id="settings-panes" class="settings-panes">
-          <section id="pane-gameplay" class="settings-pane" role="tabpanel" aria-labelledby="tab-gameplay">
+          <p id="settings-search-empty" class="settings-search-empty" hidden>No settings match. Try another word.</p>
+          <section id="pane-gameplay" class="settings-pane" role="tabpanel" aria-labelledby="tab-gameplay" data-title="Gameplay">
+            <nav class="gameplay-jump" aria-label="Gameplay sections">
+              <button type="button" class="gameplay-jump-button" data-section="gameplay-story">Story</button>
+              <button type="button" class="gameplay-jump-button" data-section="gameplay-battles">Battles</button>
+              <button type="button" class="gameplay-jump-button" data-section="gameplay-pokemon">Pokémon</button>
+              <button type="button" class="gameplay-jump-button" data-section="gameplay-challenge">Challenge</button>
+            </nav>
+            <div id="gameplay-story" class="gameplay-section" data-title="Story">
+            <h2 class="section-title">Story<small>Language, movies and text, your hero and starters, getting around, fast-forward and co-op.</small></h2>
             <h2 class="group-title">Game</h2>
             <div class="settings-group">
               <label data-feature="languagePacks" class="field"><span>Language<small id="language-help">The game's text, menus and title cards in French, German, Spanish, Italian or Japanese, from its European and Japanese releases. A language downloads the first time you play with it.</small></span><select id="language"></select></label>
               <p id="language-note" class="row-note" data-feature="languagePacks" hidden></p>
               <div data-feature="languagePacks" class="field"><span>Other languages<small id="language-folder-help">A fan translation is a folder with a pack.json and a text.txt: put it in the languages folder and it shows in the list above.</small></span><button class="subtle" id="open-languages" type="button">Open languages folder</button></div>
               <label class="switch"><span><strong>Skip movies</strong><small>Straight past the logos and the game's movies, and XD's opening ship scene.</small></span><input id="skipMovies" type="checkbox"><i></i></label>
+              <label data-feature="hdText" class="field"><span>Text<small>HD draws the game's fonts sharp from the Inter typeface. Upscaled keeps their original look, enlarged.</small></span><select id="hdText"><option value="on">HD</option><option value="upscaled">Upscaled</option><option value="off">As on the disc</option></select></label>
+              <label data-feature="playAs" class="switch"><span><strong>Choose your hero</strong><small>A New Game asks who you will play as before you enter your name: the game's own hero (Wes, or Michael in XD), or Brendan, May, Red or Leaf, the Game Boy Advance heroes Colosseum's Mt. Battle shows, and in XD Wes too. Your hero walks the story and battles in the game's hero's place, and the save remembers who you chose. The opening, the movies and the P★DA still show the game's own hero. Online, you battle as the hero you choose on the Customize page.</small></span><input id="chooseHero" type="checkbox"><i></i></label>
+              <label data-feature="starters" class="switch"><span><strong id="choose-starters-title">Choose starters</strong><small id="choose-starters-note">After you enter your name for a New Game, the game asks whether to begin with Espeon and Umbreon. Say No to pick any two Pokémon instead, at the same levels. A randomized game that randomizes the starters doesn't ask.</small></span><input id="chooseStarters" type="checkbox"><i></i></label>
+              <label data-feature="partnerPass" class="switch"><span><strong>Walk through Rui</strong><small>Wes walks straight through Rui instead of pushing her back a step at a time, so turning round on a narrow walkway is easy. She still follows him as before.</small></span><input id="partnerPass" type="checkbox"><i></i></label>
+              <label data-feature="pokeSpots" class="switch"><span><strong>More Poké Spot Pokémon</strong><small>Each Poké Spot draws from about 60 kinds of Pokémon instead of its own three, sorted by type: Normal, Ground, Rock, Fire and Flying at the Rock spot; Water, Grass, Bug and Electric at the Oasis; Poison, Ghost, Dark, Psychic, Steel, Ice, Dragon and Fighting in the Cave. Only first forms and Pokémon that don't evolve, and no legendary Pokémon. Pokémon that are easy to catch come more often, and the spot's own three most of all. Generation 4 Pokémon and your Pokémon packs' own come too when you have them. Munchlax and Bonsly come as before. Turn it off to keep each spot's own three.</small></span><input id="pokeSpotPool" type="checkbox"><i></i></label>
+            </div>
+            <h2 class="group-title">Fast-forward</h2>
+            <div class="settings-group">
+              <label class="field"><span>Fast-forward button<small>Fast-forward is L + R together: both triggers, or both bumpers, on a controller, and Q + E or Tab on the keyboard. Hold runs the game faster while you hold them. Press to turn on and off runs it faster from one press until the next, and shows Fast-forward at the top right while it's on.</small></span><select id="fastForward"><option value="hold">Hold</option><option value="toggle">Press to turn on and off</option></select></label>
+              <label class="field"><span>Fast-forward speed<small>How many times faster the game runs while fast-forwarding. A slower computer may not reach the faster speeds.</small></span><select id="fastForwardSpeed"><option value="2">2×</option><option value="3">3×</option><option value="4">4×</option><option value="6">6×</option><option value="8">8×</option></select></label>
+            </div>
+            <p class="preset-tip"><strong>Movies:</strong> <strong>A</strong> or the fast-forward button skips a movie.</p>
+            <h2 class="group-title" data-feature="coop">Split-screen co-op</h2>
+            <div class="settings-group" data-feature="coop">
+              <label class="switch"><span><strong>Split-screen co-op</strong><small>A second player can play the story with you: in the field, press START on a second controller. Player 2 moves on their own controller, with their own camera, in their own half of the screen, and comes along through every door. They can talk to people, open treasures and go through doors too, and move on the text of a conversation they start. In double battles player 1 chooses for the first Pokémon and player 2 for the second. Hold START on their controller to leave, press Z to come back beside player 1, and X to change hero. Battles, cutscenes and the menus show the whole screen, and so do conversations in XD.</small></span><input id="coop" type="checkbox"><i></i></label>
+              <label class="field sub"><span>Player 2<small>Who player 2 walks as. Automatic is Red in Colosseum, or Wes when you play as someone else; in XD it is Wes, or Michael when you play as someone else. X in the game changes it.</small></span><select id="coopHero"><option value="auto">Automatic</option><option id="coop-michael" value="michael" hidden>Michael</option><option value="wes">Wes</option><option value="brendan">Brendan</option><option value="may">May</option><option value="red">Red</option><option value="leaf">Leaf</option></select></label>
+              <label class="field sub"><span>Screen</span><select id="coopSplit"><option value="side">Side by side</option><option value="stacked">One above the other</option></select></label>
+              <label class="field sub"><span>Player 2 plays on<small>With the keyboard and one controller, choose the controller: the keyboard is then player 1, menus included, and the controller player 2.</small></span><select id="coopPads"><option value="controllers">A second controller</option><option value="keyboard">The controller (the keyboard is player 1)</option></select></label>
+            </div>
+            </div>
+            <div id="gameplay-battles" class="gameplay-section" data-title="Battles">
+            <h2 class="section-title">Battles<small>How battles play out and how fast.</small></h2>
+            <h2 class="group-title">Speed and commands</h2>
+            <div class="settings-group">
               <label data-feature="battleSpeed" class="switch"><span><strong>Skip battle animations</strong><small>Moves, send-outs and HP bars finish at once, without being shown. Text stays up long enough to read.</small></span><input id="skipBattleAnimations" type="checkbox"><i></i></label>
               <label data-feature="battleSpeed" class="field range-field"><span><strong>Battle animation speed</strong><output id="battleSpeed-value" for="battleSpeed">1.5×</output><small>How fast moves, send-outs and HP bars play; 1× is the original speed. Menus stay at normal speed, and text stays up long enough to read.</small></span><input id="battleSpeed" type="range" min="1" max="5" step="0.1" aria-label="Battle animation speed"></label>
               <label data-feature="quickMoves" class="switch"><span><strong>Quick moves</strong><small>In battle, press Z (R1 or RB, the right bumper, on other controllers) to open your moves, then A, B, X or Y to use the first, second, third or fourth move at once, as in Pokémon Stadium. The battle menu shows that button beside FIGHT, and each move its button. Z again goes back; FIGHT works as before.</small></span><input id="quickMoves" type="checkbox"><i></i></label>
               <label data-feature="quickMoves" class="switch"><span><strong>Quick status effects</strong><small>A status condition or stat change shows right where the move hit, without its own camera shot, and the battle moves on as soon as its message closes. A status move like Thunder Wave doesn't linger on its target after it lands.</small></span><input id="quickStatus" type="checkbox"><i></i></label>
-              <label data-feature="hdText" class="field"><span>Text<small>HD draws the game's fonts sharp from the Inter typeface. Upscaled keeps their original look, enlarged.</small></span><select id="hdText"><option value="on">HD</option><option value="upscaled">Upscaled</option><option value="off">As on the disc</option></select></label>
+            </div>
+            </div>
+            <div id="gameplay-pokemon" class="gameplay-section" data-title="Pokémon">
+            <h2 class="section-title">Pokémon<small>Shiny Pokémon, TMs, EXP and moves, and later generations’ Pokémon and rules.</small></h2>
+            <h2 class="group-title">Shiny Pokémon</h2>
+            <div class="settings-group">
               <label data-feature="shiny" class="switch"><span><strong>Show shiny Shadow Pokémon</strong><small id="shiny-shadow-note">A Shadow Pokémon looks shiny in battle if it will be shiny once you snag it. That's decided when you first meet it in battle, and it stays the same if you lose or battle it again. Only resetting to a save from before you met it gives a new chance.</small></span><input id="shinyShadow" type="checkbox"><i></i></label>
               <label data-feature="shinyStarters" class="switch"><span><strong>Shiny starters</strong><small>Espeon and Umbreon can be shiny, at the Shiny odds below; the original never makes them shiny. From your next New Game.</small></span><input id="shinyStarters" type="checkbox"><i></i></label>
               <label data-feature="shinyOdds" class="field"><span>Shiny odds<small id="shiny-odds-note">How likely a Pokémon you can get is to be shiny; 1 in 8192 is the original game's odds. It counts for Espeon and Umbreon with Shiny starters on, and for Shadow Pokémon, whose chance is decided when you first meet one in battle. The Pokémon you're given that are never shiny stay that way.</small></span><select id="shinyOdds"><option value="8192">1 in 8192 (original)</option><option value="4096">1 in 4096 (later Pokémon games)</option><option value="1365">1 in 1365 (later games with the Shiny Charm)</option><option value="512">1 in 512</option><option value="128">1 in 128</option><option value="32">1 in 32</option></select></label>
-              <label data-feature="playAs" class="switch"><span><strong>Choose your hero</strong><small>A New Game asks who you will play as before you enter your name: the game's own hero (Wes, or Michael in XD), or Brendan, May, Red or Leaf, the Game Boy Advance heroes Colosseum's Mt. Battle shows, and in XD Wes too. Your hero walks the story and battles in the game's hero's place, and the save remembers who you chose. The opening, the movies and the P★DA still show the game's own hero. Online, you battle as the hero you choose on the Customize page.</small></span><input id="chooseHero" type="checkbox"><i></i></label>
-              <label data-feature="starters" class="switch"><span><strong id="choose-starters-title">Choose starters</strong><small id="choose-starters-note">After you enter your name for a New Game, the game asks whether to begin with Espeon and Umbreon. Say No to pick any two Pokémon instead, at the same levels. A randomized game that randomizes the starters doesn't ask.</small></span><input id="chooseStarters" type="checkbox"><i></i></label>
+            </div>
+            <h2 class="group-title">Moves and EXP</h2>
+            <div class="settings-group">
               <label data-feature="tmNames" class="switch"><span><strong>TMs by move name</strong><small>The bag and shops list a TM by the move it teaches, such as Thunderbolt, instead of TM24. Its number shows above the description box.</small></span><input id="tmNames" type="checkbox"><i></i></label>
               <label data-feature="infiniteTms" class="switch"><span><strong>Infinite TMs</strong><small>Teaching a TM doesn't use it up, as in later Pokémon games, so you can teach it to as many Pokémon as you like.</small></span><input id="infiniteTms" type="checkbox"><i></i></label>
               <label data-feature="expAll" class="switch"><span><strong>Exp All</strong><small>The Pokémon that battled a foe get the same EXP as in the original game, and the rest of your party gets some too, as much as you set below. A Pokémon holding an EXP. SHARE still gets its share on top, as in the original game. The EXP shows in one panel for your party, as in Pokémon Scarlet and Violet, with each bar filling and levels going up; any new move is still offered after it. Fainted Pokémon get none, and Shadow Pokémon save theirs for when they're purified.</small></span><input id="expAll" type="checkbox"><i></i></label>
               <label data-feature="expAll" class="field range-field"><span><strong>Exp All for the rest of the party</strong><output id="expAllShare-value" for="expAllShare">0.5×</output><small>How much EXP each Pokémon that didn't battle gets, of what one that battled got: 0.5× is half, 1× the same.</small></span><input id="expAllShare" type="range" min="0.05" max="1" step="0.05" aria-label="Exp All for the rest of the party"></label>
-              <label data-feature="partnerPass" class="switch"><span><strong>Walk through Rui</strong><small>Wes walks straight through Rui instead of pushing her back a step at a time, so turning round on a narrow walkway is easy. She still follows him as before.</small></span><input id="partnerPass" type="checkbox"><i></i></label>
               <label data-feature="moveRelearner" class="switch"><span><strong>Move Relearner</strong><small>The Move Deleter in Mt. Battle's Pokémon Center can also make a Pokémon remember a move it learns by level-up, at or below its level, as the Move Relearner does in later Pokémon games. Shadow Pokémon must be purified first. Turn it off to have the Move Deleter only delete moves, as in the original game.</small></span><input id="moveRelearner" type="checkbox"><i></i></label>
-              <label data-feature="pokeSpots" class="switch"><span><strong>More Poké Spot Pokémon</strong><small>Each Poké Spot draws from about 60 kinds of Pokémon instead of its own three, sorted by type: Normal, Ground, Rock, Fire and Flying at the Rock spot; Water, Grass, Bug and Electric at the Oasis; Poison, Ghost, Dark, Psychic, Steel, Ice, Dragon and Fighting in the Cave. Only first forms and Pokémon that don't evolve, and no legendary Pokémon. Pokémon that are easy to catch come more often, and the spot's own three most of all. Generation 4 Pokémon and your Pokémon packs' own come too when you have them. Munchlax and Bonsly come as before. Turn it off to keep each spot's own three.</small></span><input id="pokeSpotPool" type="checkbox"><i></i></label>
             </div>
+            <h2 class="group-title" data-feature="generations">Later generations</h2>
+            <p id="generations-disc-note" class="preset-tip generations-disc-note" hidden></p>
+            <div class="settings-group" data-feature="generations">
+              <label class="field"><span>Battle rules<small id="battle-rules-note">Generation 4: each move is physical or special by itself, not by its type; a sandstorm raises Rock types' Sp. Def; and moves Diamond and Pearl changed play as they did there. An online battle plays by its room's rules, chosen under Rules on the Online page.</small></span><select id="battleRules"><option id="battle-rules-gen3" value="3">Colosseum (Gen 3)</option><option value="4">Diamond and Pearl (Gen 4)</option></select></label>
+              <label class="switch"><span><strong>Generation 4 Pokémon</strong><small id="generation4-note">Adds the 107 Pokémon from Turtwig to Arceus, and the new moves of Diamond and Pearl that Colosseum can play, to your game and the Pokédex. The randomizer can choose them, with Gen 4 under its Generations. Their models and cries come from your own Pokémon Battle Revolution disc, asked for when you turn this on; without it, a Colosseum Pokémon stands in for each one's looks and cry.</small></span><input id="generation4Pokemon" type="checkbox"><i></i></label>
+              <div id="pbr-row" class="path-row" data-feature="pbrAssets"><div><strong>Battle Revolution assets</strong><span class="small-path" id="pbr-note"></span></div><div class="actions"><button class="subtle" id="choose-pbr-disc">Choose disc</button><button class="subtle" id="make-pbr-models">Make assets</button></div></div>
+              <div id="pbr-check" class="disc-check" role="alert" data-feature="pbrAssets" hidden><div><strong id="pbr-check-title"></strong><small id="pbr-check-detail"></small></div><button id="pbr-check-close" class="disc-check-close" aria-label="Dismiss">×</button></div>
+              <label class="switch" data-feature="pbrAssets"><span><strong>Replace all models</strong><small id="pbr-replace-all-note">Gives the game's own Pokémon, Bulbasaur to Deoxys, their Battle Revolution models too, so every Pokémon looks as it does there, in the game and the Pokédex.</small></span><input id="pbrReplaceAll" type="checkbox"><i></i></label>
+              <label class="switch" data-feature="pbrAssets"><span><strong>Battle Revolution HD textures <span id="pbr-textures-badge" class="badge">Not installed</span></strong><small id="pbr-textures-note">Battle Revolution's own textures, upscaled for sharper models.</small></span><input id="pbrTextures" type="checkbox"><i></i></label>
+            </div>
+            </div>
+            <div id="gameplay-challenge" class="gameplay-section" data-title="Challenge">
+            <h2 class="section-title">Challenge<small>Harder trainers and randomized runs. All off unless you turn them on.</small></h2>
             <h2 class="group-title" data-feature="difficulty">Difficulty</h2>
             <div class="settings-group" data-feature="difficulty">
               <label class="field"><span>Trainers' levels<small>How much higher the story's trainers' Pokémon are, Shadow Pokémon included, than what you choose below. Battle Mode, Quick Battle and the Orre Colosseum's challenges stay as they are.</small></span><select id="difficultyLevels"><option value="0">Original</option><option value="10">10% higher</option><option value="20">20% higher</option><option value="30">30% higher</option><option value="50">50% higher</option></select></label>
@@ -499,19 +550,6 @@
               <label class="field"><span>More Shadow Pokémon<small>Story trainers get extra Shadow Pokémon to snag, spread through the story, with a third on the bosses. Each one you meet counts just like the story's own: Ho-Oh in Colosseum needs every Shadow Pokémon you've met purified, and in XD Miror B. can take one that got away, as with the story's. Ones on trainers you never battle don't count. With the randomizer's Shadow Pokémon on, each is a new roll from your run.</small></span><select id="difficultyShadows"><option value="0">Off</option><option value="12">12 more</option><option value="24">24 more</option><option value="48">As many as fit (48 in Colosseum, 44 in XD)</option></select></label>
               <p class="row-note">All off by default. They change battles you haven't had yet, and turning them off gives you the original game back.</p>
             </div>
-            <h2 class="group-title" data-feature="coop">Split-screen co-op</h2>
-            <div class="settings-group" data-feature="coop">
-              <label class="switch"><span><strong>Split-screen co-op</strong><small>A second player can play the story with you: in the field, press START on a second controller. Player 2 moves on their own controller, with their own camera, in their own half of the screen, and comes along through every door. They can talk to people, open treasures and go through doors too, and move on the text of a conversation they start. In double battles player 1 chooses for the first Pokémon and player 2 for the second. Hold START on their controller to leave, press Z to come back beside player 1, and X to change hero. Battles, cutscenes and the menus show the whole screen, and so do conversations in XD.</small></span><input id="coop" type="checkbox"><i></i></label>
-              <label class="field sub"><span>Player 2<small>Who player 2 walks as. Automatic is Red in Colosseum, or Wes when you play as someone else; in XD it is Wes, or Michael when you play as someone else. X in the game changes it.</small></span><select id="coopHero"><option value="auto">Automatic</option><option id="coop-michael" value="michael" hidden>Michael</option><option value="wes">Wes</option><option value="brendan">Brendan</option><option value="may">May</option><option value="red">Red</option><option value="leaf">Leaf</option></select></label>
-              <label class="field sub"><span>Screen</span><select id="coopSplit"><option value="side">Side by side</option><option value="stacked">One above the other</option></select></label>
-              <label class="field sub"><span>Player 2 plays on<small>With the keyboard and one controller, choose the controller: the keyboard is then player 1, menus included, and the controller player 2.</small></span><select id="coopPads"><option value="controllers">A second controller</option><option value="keyboard">The controller (the keyboard is player 1)</option></select></label>
-            </div>
-            <h2 class="group-title">Fast-forward</h2>
-            <div class="settings-group">
-              <label class="field"><span>Fast-forward button<small>Fast-forward is L + R together: both triggers, or both bumpers, on a controller, and Q + E or Tab on the keyboard. Hold runs the game faster while you hold them. Press to turn on and off runs it faster from one press until the next, and shows Fast-forward at the top right while it's on.</small></span><select id="fastForward"><option value="hold">Hold</option><option value="toggle">Press to turn on and off</option></select></label>
-              <label class="field"><span>Fast-forward speed<small>How many times faster the game runs while fast-forwarding. A slower computer may not reach the faster speeds.</small></span><select id="fastForwardSpeed"><option value="2">2×</option><option value="3">3×</option><option value="4">4×</option><option value="6">6×</option><option value="8">8×</option></select></label>
-            </div>
-            <p class="preset-tip"><strong>Movies:</strong> <strong>A</strong> or the fast-forward button skips a movie.</p>
             <h2 class="group-title" data-feature="randomizer">Randomizer</h2>
             <div class="settings-group" data-feature="randomizer">
               <label class="switch"><span><strong>Randomize new games</strong><small>Swaps the game's Pokémon for others, chosen by a seed. It starts with your next New Game and stays with that save: an existing save is never changed.</small></span><input id="randomizer" type="checkbox"><i></i></label>
@@ -531,19 +569,10 @@
               </div>
               <div class="field randomizer-save"><span>Your save<small id="randomizer-save-note"></small></span><button id="randomizer-spoilers" class="subtle" type="button" hidden>Show spoilers</button></div>
             </div>
-            <h2 class="group-title" data-feature="generations">Later generations</h2>
-            <p id="generations-disc-note" class="preset-tip generations-disc-note" hidden></p>
-            <div class="settings-group" data-feature="generations">
-              <label class="field"><span>Battle rules<small id="battle-rules-note">Generation 4: each move is physical or special by itself, not by its type; a sandstorm raises Rock types' Sp. Def; and moves Diamond and Pearl changed play as they did there. An online battle plays by its room's rules, chosen under Rules on the Online page.</small></span><select id="battleRules"><option id="battle-rules-gen3" value="3">Colosseum (Gen 3)</option><option value="4">Diamond and Pearl (Gen 4)</option></select></label>
-              <label class="switch"><span><strong>Generation 4 Pokémon</strong><small id="generation4-note">Adds the 107 Pokémon from Turtwig to Arceus, and the new moves of Diamond and Pearl that Colosseum can play, to your game and the Pokédex. The randomizer can choose them, with Gen 4 under its Generations. Their models and cries come from your own Pokémon Battle Revolution disc, asked for when you turn this on; without it, a Colosseum Pokémon stands in for each one's looks and cry.</small></span><input id="generation4Pokemon" type="checkbox"><i></i></label>
-              <div id="pbr-row" class="path-row" data-feature="pbrAssets"><div><strong>Battle Revolution assets</strong><span class="small-path" id="pbr-note"></span></div><div class="actions"><button class="subtle" id="choose-pbr-disc">Choose disc</button><button class="subtle" id="make-pbr-models">Make assets</button></div></div>
-              <div id="pbr-check" class="disc-check" role="alert" data-feature="pbrAssets" hidden><div><strong id="pbr-check-title"></strong><small id="pbr-check-detail"></small></div><button id="pbr-check-close" class="disc-check-close" aria-label="Dismiss">×</button></div>
-              <label class="switch" data-feature="pbrAssets"><span><strong>Replace all models</strong><small id="pbr-replace-all-note">Gives the game's own Pokémon, Bulbasaur to Deoxys, their Battle Revolution models too, so every Pokémon looks as it does there, in the game and the Pokédex.</small></span><input id="pbrReplaceAll" type="checkbox"><i></i></label>
-              <label class="switch" data-feature="pbrAssets"><span><strong>Battle Revolution HD textures <span id="pbr-textures-badge" class="badge">Not installed</span></strong><small id="pbr-textures-note">Battle Revolution's own textures, upscaled for sharper models.</small></span><input id="pbrTextures" type="checkbox"><i></i></label>
             </div>
           </section>
 
-          <section id="pane-display" class="settings-pane" role="tabpanel" aria-labelledby="tab-display" hidden>
+          <section id="pane-display" class="settings-pane" role="tabpanel" aria-labelledby="tab-display" data-title="Display" hidden>
             <h2 class="group-title">Screen</h2>
             <div class="settings-group">
               <label class="switch"><span><strong>Fullscreen</strong><small>Game fills your display. F11 or Alt+Enter switches while playing.</small></span><input id="fullscreen" type="checkbox"><i></i></label>
@@ -566,7 +595,7 @@
             </div>
           </section>
 
-          <section id="pane-graphics" class="settings-pane" role="tabpanel" aria-labelledby="tab-graphics" hidden>
+          <section id="pane-graphics" class="settings-pane" role="tabpanel" aria-labelledby="tab-graphics" data-title="Graphics" hidden>
             <div class="settings-group preset-group">
               <label class="field"><span><strong>Graphics preset</strong><small id="graphicsPreset-detail"></small></span><select id="graphicsPreset" aria-label="Graphics preset"></select></label>
               <p class="row-note">Sets everything under Quality below. Change any of them and the preset becomes Custom.</p>
@@ -595,7 +624,7 @@
             </div>
           </section>
 
-          <section id="pane-sound" class="settings-pane" role="tabpanel" aria-labelledby="tab-sound" hidden>
+          <section id="pane-sound" class="settings-pane" role="tabpanel" aria-labelledby="tab-sound" data-title="Sound" hidden>
             <h2 class="group-title">Volume</h2>
             <div class="settings-group">
               <label class="field range-field"><span><strong>Master volume</strong><output id="volumeMaster-value" for="volumeMaster">100%</output><small>Everything the game plays.</small></span><input id="volumeMaster" type="range" min="0" max="100" step="5" aria-label="Master volume"></label>
@@ -605,7 +634,7 @@
             <p class="helper">These are also under Settings in the game's menu (START in the field), where a change is heard at once and saved here straight away.</p>
           </section>
 
-          <section id="pane-controls" class="settings-pane" role="tabpanel" aria-labelledby="tab-controls" hidden>
+          <section id="pane-controls" class="settings-pane" role="tabpanel" aria-labelledby="tab-controls" data-title="Controls" hidden>
             <div class="controls-head"><h2 class="group-title">Buttons</h2><div class="binding-modes" role="group" aria-label="Show bindings for"><button class="subtle" data-binding-mode="keyboard" aria-pressed="true">Keyboard</button><button class="subtle" data-binding-mode="controller" aria-pressed="false">Controller</button></div></div>
             <div class="settings-group controls-panel">
               <div id="binding-list" class="binding-list"></div>
@@ -626,7 +655,7 @@
             <section id="gc-adapter-note" class="controls-note" aria-label="GameCube adapter" aria-live="polite" hidden><h2>GameCube adapter</h2><p id="gc-adapter-text"></p><div class="actions" id="gc-adapter-actions" hidden><button id="gc-adapter-allow">Allow access</button><button class="subtle" id="gc-adapter-copy">Copy terminal command</button><button id="gc-adapter-zadig">Get Zadig</button><button class="subtle" id="gc-adapter-check">Check again</button></div><p class="helper" id="gc-adapter-helper"></p></section>
           </section>
 
-          <section id="pane-gba" class="settings-pane" role="tabpanel" aria-labelledby="tab-gba" hidden>
+          <section id="pane-gba" class="settings-pane" role="tabpanel" aria-labelledby="tab-gba" data-title="Game Boy Advance" hidden>
             <h2 class="group-title">Game Boy Advance</h2>
             <p class="helper" id="gba-intro">Link your Pokémon Ruby, Sapphire, Emerald, FireRed or LeafGreen save to the game, as the GCN-GBA cable did: register your team for Colosseum Battle, trade, and get Poké Coupon prizes. Choose the save your emulator keeps: the game reads it, and writes trades and prizes back into it, with a backup first.</p>
             <p class="helper" id="gba-status" aria-live="polite"></p>
@@ -642,7 +671,7 @@
             <div class="settings-group source-group"><details id="gba-advanced"><summary><h2>If linking doesn't work: run the GBA itself <small>Advanced</small></h2></summary><p class="helper">Linking from the save alone has been checked with Emerald. If it doesn't work with your game, choose a dump of the Game Pak your save belongs to: the GBA then runs inside the game (mGBA, as in Dolphin) and the Game Pak does the linking itself, as on a console. This is also how to choose moves on a GBA's screen in Colosseum Battle, or to scan e-Reader cards. A BIOS dump is optional; mGBA has its own.</p><div class="settings-group" id="gba-paks"></div><div class="path-row"><div><strong>GBA BIOS <small>Optional</small></strong><span class="small-path" id="gba-bios-path"></span><span class="small-path gba-note" id="gba-bios-note"></span></div><div class="actions"><button class="subtle" id="gba-bios-clear" hidden>Remove</button><button class="subtle" id="gba-bios-choose">Choose file</button></div></div><p class="helper">The game asks for the GBA on socket 2. Sockets 3 and 4 are for linking three GBAs at once, and need no controller there.</p></details></div>
             <p class="preset-tip"><strong>With a Game Pak:</strong> press <strong>G</strong> (<strong>Back</strong> on a controller) to use the GBA, and again to go back to the game; hold it for a second to turn the GBA on or off. To scan an e-Reader card, drop its .raw file on the game's window.</p>
           </section>
-          <section id="pane-manage" class="settings-pane" role="tabpanel" aria-labelledby="tab-manage" hidden>
+          <section id="pane-manage" class="settings-pane" role="tabpanel" aria-labelledby="tab-manage" data-title="Manage game" hidden>
             <h2 class="group-title">Game version</h2>
             <div class="settings-group">
               <p id="game-update-note" class="row-note lead"></p>
@@ -658,7 +687,7 @@
             </div>
             <div class="settings-group source-group"><details id="game-source"><summary><h2>Game source <small>Advanced</small></h2></summary><p class="helper">Build from another port or decomp fork, branch, tag or commit, for testing. Leave a row empty to keep this release's, or enter only a branch, tag or commit to use this release's repository. Your saves stay where they are.</p><div class="source-grid"><label>Game repository<input id="source-port-repository" type="text" spellcheck="false" autocomplete="off" placeholder="https://git.softwareauralabs.com/chase/pokemon-colosseum.git"></label><label>Branch, tag or commit<input id="source-port-ref" type="text" spellcheck="false" autocomplete="off" placeholder="master"></label><label>Decomp repository<input id="source-decomp-repository" type="text" spellcheck="false" autocomplete="off" placeholder="https://github.com/chasem-dev/pkmn-colosseum.git"></label><label>Branch, tag or commit<input id="source-decomp-ref" type="text" spellcheck="false" autocomplete="off" placeholder="master"></label></div><div class="actions"><button class="subtle" id="apply-game-source">Use this source</button><button class="subtle" id="reset-game-source">Use this release's</button></div><p id="game-source-note" class="helper"></p></details></div>
           </section>
-          <section id="pane-launcher" class="settings-pane" role="tabpanel" aria-labelledby="tab-launcher" hidden>
+          <section id="pane-launcher" class="settings-pane" role="tabpanel" aria-labelledby="tab-launcher" data-title="Launcher" hidden>
             <h2 class="group-title">Appearance</h2>
             <div class="settings-group">
               <label class="switch"><span><strong>Share anonymous usage</strong><small>Sends your launcher and game versions, OS and a random ID, so the top bar can show how many players are online. Nothing personal. You still see the count with this off.</small></span><input id="shareUsage" type="checkbox"><i></i></label>
