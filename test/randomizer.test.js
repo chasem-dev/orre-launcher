@@ -246,3 +246,11 @@ test('spoilers leave out the teams a run with no repeats lists, as they do rows'
   assert.match(text, /Makuhita is now Lotad/);
   assert.doesNotMatch(text, /team|row/);
 });
+
+test('spoilers list extra Shadow Pokémon when the game logs them', () => {
+  const raw = 'seed C0FFEE11 options 147 generations 7\nshadow 1 216 383\nextra 127 264 212\nextra 126 161 161\n';
+  const species = [{ national: 216, name: 'Teddiursa' }, { national: 383, name: 'Groudon' },
+    { national: 264, name: 'Linoone' }, { national: 212, name: 'Scizor' }, { national: 161, name: 'Sentret' }];
+  const text = randomizer.spoilerText(raw, species, [], 'xd');
+  assert.match(text, /Shadow Pokémon\n  Teddiursa is now Groudon\n\nExtra Shadow Pokémon\n  Linoone is now Scizor\n  Sentret\n/);
+});

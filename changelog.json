@@ -49,7 +49,8 @@
       "Difficulty, under Gameplay: raise the story's trainers' levels by up to 50%, evolve their Pokémon to fit their level, give trainers with small teams more Pokémon, and add up to 48 more Shadow Pokémon to snag on story trainers, in Colosseum and XD. Each is off unless you turn it on.",
       "Trade from the start, under Settings, Game Boy Advance: on by default, the Trade Center trades with your GBA save before the story's end. Turn it off to wait as in the original game.",
       "Difficulty: Trainers' levels can now be higher than your strongest Pokémon instead of the game's own levels, so the story's trainers keep up as your team levels up. Choose it under Gameplay, Higher than.",
-      "Battle Revolution HD textures: removed the upscaled reflection texture that gave Skarmory sharp black and white bands across its body, so installed packs fix themselves before you play or open the Pokédex."
+      "Battle Revolution HD textures: removed the upscaled reflection texture that gave Skarmory sharp black and white bands across its body, so installed packs fix themselves before you play or open the Pokédex.",
+      "Randomizer spoilers now include Extra Shadow Pokémon when Difficulty's More Shadow Pokémon is turned on."
     ],
     "game": [
       "120 fps in Colosseum and XD: characters, the camera and fades move twice as smoothly, menu text stays steady, Snag Balls play out in full, and the game keeps its normal speed.",
@@ -99,7 +100,8 @@
       "Fixed XD getting stuck at your first battle with Naps when Bigger teams was on: he had extra Pokémon that can't be snagged, in the one battle where you can only throw balls, so it never ended. He has just his Teddiursa there again.",
       "Fixed battles freezing when a Pokémon with a Battle Revolution model used a move it has its own animation for, such as Pichu's Tail Whip: the battle now goes on.",
       "Fixed Skarmory's Battle Revolution model looking dark and banded with harsh black and white stripes: the game skips the broken reflection image from the Battle Revolution HD texture pack, and Battle Revolution models with reflective bodies, such as Skarmory, Forretress, Ditto and Dialga, now add their shine as Battle Revolution does instead of darkening. Make assets offers to make them again.",
-      "Fixed XD cutscenes, such as Zook sending out his Shadow Zangoose in Gateon Port, snapping back to the previous camera angle and spinning around at higher frame rates."
+      "Fixed XD cutscenes, such as Zook sending out his Shadow Zangoose in Gateon Port, snapping back to the previous camera angle and spinning around at higher frame rates.",
+      "Fixed extra Shadow Pokémon from Difficulty's More Shadow Pokémon repeating species or evolution families already used by your starters, story Shadow Pokémon, other extra Shadow Pokémon or the same trainer's team in a randomized run, and added them to the randomizer spoiler log."
     ]
   },
   "releases": [

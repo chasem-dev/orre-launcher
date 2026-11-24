@@ -156,6 +156,9 @@ function spoilerText(raw, species, packs = [], gameId = 'colosseum') {
   section(words.starters, 'starter', swap);
   section(words.gifts, 'gift', swap);
   section('Shadow Pokémon', 'shadow', ([, , was, now]) => `  ${nameOf(Number(was))} is now ${nameOf(Number(now))}`);
+  section('Extra Shadow Pokémon', 'extra', ([, , was, now]) => was === now
+    ? `  ${nameOf(Number(now))}`
+    : `  ${nameOf(Number(was))} is now ${nameOf(Number(now))}`);
   return out.join('\n');
 }
 
