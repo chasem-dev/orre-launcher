@@ -93,6 +93,23 @@ test('the Customize preview bends limbs and pins joints as the snag\'s emulation
   check(limb([1, 1, 0], { flip: true }));
   check(limb([1.5, 0, 0], { pole: [0.75, 5, 0] }));
   check(limb([4, 0, 0]));
+  // Scaled ancestor (as Sableye's 0.29 root or Ralts's 0.44 root): bone lengths and limb axes keep the ancestor's scale
+  const scaledLimb = limb([1, 1, 0]);
+  scaledLimb.values.set([0.25, 0.25, 0.25], 0);
+  const sJoints = scaledLimb.model.joints.map(({ parent }, j) => ({ parent, scale: j === 0 ? [0.25, 0.25, 0.25] : [1, 1, 1],
+    rotation: [0, 0, 0], translation: [0, 0, 0],
+    ...(scaledLimb.rig[j].type || scaledLimb.rig[j].refs.length || scaledLimb.rig[j].hint
+      ? { constraint: { limb: limbOf[scaledLimb.rig[j].type] || 0, refs: scaledLimb.rig[j].refs, hint: scaledLimb.rig[j].hint } } : {}) }));
+  const sPreview = createRig({ joints: sJoints, inverseBind: sJoints.map(() => null), draw: [], shapes: [] }, () => null);
+  sPreview.pose(scaledLimb.values);
+  const sExpected = snag.posed(scaledLimb.model, snag.rigOfModel({ joints: sJoints }), scaledLimb.values, 0);
+  // Target at (1, 1, 0) in scaled root space = (0.25, 0.25, 0) world; bones of local length 1 become 0.25 each -> elbow at (0, 0.25, 0)
+  near(place(Array.from(sPreview.world[2].elements)), [0, 0.25, 0], 1e-4);
+  near(place(Array.from(sPreview.world[3].elements)), [0.25, 0.25, 0], 1e-4);
+  const e1 = sPreview.world[1].elements, e2 = sPreview.world[2].elements;
+  assert.ok(Math.abs(Math.hypot(e1[0], e1[1], e1[2]) - 0.25) < 1e-4);
+  assert.ok(Math.abs(Math.hypot(e2[0], e2[1], e2[2]) - 0.25) < 1e-4);
+  sJoints.forEach((_, j) => near(place(Array.from(sPreview.world[j].elements)), place(sExpected[j]), 1e-4));
   const joints = [{ parent: -1 }, { parent: 0 }, { parent: 0 }], rig = [plain(), plain([{ type: 1, joint: 2 }]), plain()];
   const values = new Float32Array(27);
   [[0, 0, 0], [1, 2, 3], [-4, 5, 6]].forEach((p, j) => values.set([1, 1, 1, 0, 0, 0, ...p], j * 9));

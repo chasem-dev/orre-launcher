@@ -165,12 +165,17 @@ export function createRig(rig, makeMesh) {
     // a followed joint's place: as constrained if it came before this one, else as first posed
     const at = k => (k < j ? placeOf(world[k]) : plainPlace[k]);
     const average = joints => scaled(joints.reduce((sum, k) => add(sum, at(k)), [0, 0, 0]), 1 / joints.length);
-    const { limb, hint } = constraintOf(j), parent = rig.joints[j].parent, scaleX = k => values[k * 9];
+    const { limb, hint } = constraintOf(j), parent = rig.joints[j].parent;
+    // The joint's accumulated scale (jobj->scl in jobj.c): resolveIKJoint1/2 and the effector use it, not the joint's
+    // local scale alone, so a scaled ancestor (such as Sableye's 0.29 root or Ralts's 0.44 root) scales both the bone
+    // lengths and the solved limb matrices.
+    const worldScale = k => (hasScale[k] ? scales[k] : [1, 1, 1]);
     if (limb === JOINT1 && hint) {
       const { joint2, effector } = limbs.get(j);
       if (effector < 0 || !refsOf(effector, PLACE).length) return;
       const hint2 = joint2 >= 0 ? constraintOf(joint2).hint : null;
-      const a = hint.length * scaleX(j), b = hint2 ? hint2.length * scaleX(joint2) * scaleX(j) : 0;
+      const s = worldScale(j);
+      const a = hint.length * s[0], b = hint2 ? hint2.length * values[joint2 * 9] * s[0] : 0;
       const base = parent >= 0 ? placeOf(world[parent]) : [0, 0, 0], target = average(refsOf(effector, PLACE));
       targets.set(effector, target);
       const toward = sub(target, base), d2 = dot(toward, toward);
@@ -192,16 +197,16 @@ export function createRig(rig, makeMesh) {
       const a2 = a * a, b2 = b * b, t = a2 - b2, h2 = Math.max(0, 0.25 * (2 * (a2 + b2) - d2 - (t * t) / d2));
       const along = Math.sqrt(Math.max(0, (a2 - h2) / d2)), height = Math.sqrt(h2) * (hint2?.flip ? -1 : 1);
       const x = unit(add(scaled(toward, b2 - h2 < d2 ? along : -along), scaled(side, height)));
-      const s = [values[j * 9], values[j * 9 + 1], values[j * 9 + 2]];
       setMatrix(world[j], scaled(x, s[0]), scaled(cross(normal, x), s[1]), scaled(normal, s[2]), base);
     } else if (limb === JOINT2 && parent >= 0 && constraintOf(parent)?.hint) {
       const effector = childOf(j, EFFECTOR), target = targets.get(effector);
       if (effector < 0 || !target) return;
-      const elbow = add(placeOf(world[parent]), scaled(unit(axisOf(world[parent], 0)), constraintOf(parent).hint.length * scaleX(parent)));
-      const x = unit(sub(target, elbow)), y = unit(cross(axisOf(world[parent], 2), x)), s = [values[j * 9], values[j * 9 + 1], values[j * 9 + 2]];
+      const s = worldScale(j);
+      const elbow = add(placeOf(world[parent]), scaled(unit(axisOf(world[parent], 0)), constraintOf(parent).hint.length * worldScale(parent)[0]));
+      const x = unit(sub(target, elbow)), y = unit(cross(axisOf(world[parent], 2), x));
       setMatrix(world[j], scaled(x, s[0]), scaled(y, s[1]), scaled(cross(x, y), s[2]), elbow);
     } else if (limb === EFFECTOR && parent >= 0 && constraintOf(parent)?.hint) {
-      const end = add(placeOf(world[parent]), scaled(unit(axisOf(world[parent], 0)), constraintOf(parent).hint.length * scaleX(parent)));
+      const end = add(placeOf(world[parent]), scaled(unit(axisOf(world[parent], 0)), constraintOf(parent).hint.length * worldScale(parent)[0]));
       world[j].elements[12] = end[0]; world[j].elements[13] = end[1]; world[j].elements[14] = end[2];
     } else if (!limb && refsOf(j, PLACE).length) {
       const place = average(refsOf(j, PLACE));

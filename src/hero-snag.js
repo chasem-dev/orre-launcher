@@ -155,13 +155,24 @@ function posed(model, rig, values, frame) {
   const average = joints => scaled(joints.reduce((sum, j) => add(sum, at(j)), [0, 0, 0]), 1 / joints.length);
   const childOf = (j, type) => model.joints.findIndex((joint, k) => joint.parent === j && rig[k].type === type);
   const scaleOf = j => values.subarray((frame * count + j) * 9, (frame * count + j) * 9 + 3);
+  const scales = model.joints.map(() => [1, 1, 1]), hasScale = new Uint8Array(count);
+  const worldScale = k => (hasScale[k] ? scales[k] : [1, 1, 1]);
   const target = {};
   for (let j = 0; j < count; j++) {
-    const parent = model.joints[j].parent, mine = local(values, (frame * count + j) * 9);
+    const joint = model.joints[j], parent = joint.parent, mine = local(values, (frame * count + j) * 9);
+    const parentScale = parent >= 0 && hasScale[parent] ? scales[parent] : null;
+    if (joint.classicalScale) {
+      hasScale[j] = parentScale ? 1 : 0;
+      if (parentScale) scales[j] = [...parentScale];
+    } else {
+      const s = scaleOf(j);
+      hasScale[j] = 1;
+      scales[j] = [s[0] * (parentScale ? parentScale[0] : 1), s[1] * (parentScale ? parentScale[1] : 1), s[2] * (parentScale ? parentScale[2] : 1)];
+    }
     out[j] = parent >= 0 ? multiply(out[parent], mine) : mine;
     const { type, hint } = rig[j];
     if (type === JOINT1 && hint) {
-      const scale = scaleOf(j), joint2 = childOf(j, JOINT2), effector = joint2 >= 0 ? childOf(joint2, EFFECTOR) : childOf(j, EFFECTOR);
+      const scale = worldScale(j), joint2 = childOf(j, JOINT2), effector = joint2 >= 0 ? childOf(joint2, EFFECTOR) : childOf(j, EFFECTOR);
       if (effector < 0 || !refsOf(rig, effector, PLACE).length) continue;
       const a = hint.length * scale[0], b = joint2 >= 0 && rig[joint2].hint ? rig[joint2].hint.length * scaleOf(joint2)[0] * scale[0] : 0;
       const flip = joint2 >= 0 && rig[joint2].hint ? rig[joint2].hint.flip : false;
@@ -191,12 +202,12 @@ function posed(model, rig, values, frame) {
     } else if (type === JOINT2 && parent >= 0 && rig[parent].hint) {
       const effector = childOf(j, EFFECTOR);
       if (effector < 0 || !target[effector]) continue;
-      const scale = scaleOf(j);
-      const elbow = add(placeOf(out[parent]), scaled(unit(column(out[parent], 0)), rig[parent].hint.length * scaleOf(parent)[0]));
+      const scale = worldScale(j);
+      const elbow = add(placeOf(out[parent]), scaled(unit(column(out[parent], 0)), rig[parent].hint.length * worldScale(parent)[0]));
       const x = unit(sub(target[effector], elbow)), y = unit(cross(column(out[parent], 2), x));
       out[j] = matrix(scaled(x, scale[0]), scaled(y, scale[1]), scaled(cross(x, y), scale[2]), elbow);
     } else if (type === EFFECTOR && parent >= 0 && rig[parent].hint) {
-      const end = add(placeOf(out[parent]), scaled(unit(column(out[parent], 0)), rig[parent].hint.length * scaleOf(parent)[0]));
+      const end = add(placeOf(out[parent]), scaled(unit(column(out[parent], 0)), rig[parent].hint.length * worldScale(parent)[0]));
       out[j] = [...out[j].slice(0, 12), ...end, 1];
     } else if (!type && refsOf(rig, j, PLACE).length) {
       // pinned to another joint's place (HSD_RObjUpdateAll)

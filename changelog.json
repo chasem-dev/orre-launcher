@@ -50,7 +50,8 @@
       "Trade from the start, under Settings, Game Boy Advance: on by default, the Trade Center trades with your GBA save before the story's end. Turn it off to wait as in the original game.",
       "Difficulty: Trainers' levels can now be higher than your strongest Pokémon instead of the game's own levels, so the story's trainers keep up as your team levels up. Choose it under Gameplay, Higher than.",
       "Battle Revolution HD textures: removed the upscaled reflection texture that gave Skarmory sharp black and white bands across its body, so installed packs fix themselves before you play or open the Pokédex.",
-      "Randomizer spoilers now include Extra Shadow Pokémon when Difficulty's More Shadow Pokémon is turned on."
+      "Randomizer spoilers now include Extra Shadow Pokémon when Difficulty's More Shadow Pokémon is turned on.",
+      "Fixed Pokédex 3D models with scaled limb rigs, such as Sableye and Ralts, showing oversized, distorted hands and legs in the launcher."
     ],
     "game": [
       "120 fps in Colosseum and XD: characters, the camera and fades move twice as smoothly, menu text stays steady, Snag Balls play out in full, and the game keeps its normal speed.",
