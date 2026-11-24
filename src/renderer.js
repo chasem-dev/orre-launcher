@@ -70,6 +70,7 @@ onPage('online', { show: () => window.coloOnline?.show(), hide: () => window.col
 const settingsTabs = ['gameplay', 'display', 'graphics', 'sound', 'controls', 'gba', 'manage', 'launcher'];
 let settingsTab = 'gameplay';
 function showSettingsTab(name) {
+  clearSettingsSearch();
   if (settingsTab === 'controls' && name !== 'controls') stopCapture();
   settingsTab = name;
   for (const tab of settingsTabs) {
@@ -78,10 +79,98 @@ function showSettingsTab(name) {
     $(`tab-${tab}`).classList.toggle('active', tab === name);
   }
   $('settings-panes').scrollTop = 0;
+  litGameplaySection();
   if (name === 'controls') { renderBindings(); loadGcAdapter(); }
   if (name === 'launcher') loadUpdateChannels();
 }
 for (const tab of settingsTabs) $(`tab-${tab}`).addEventListener('click', () => showSettingsTab(tab));
+
+// Search: every pane at once, keeping the rows (and whole groups, by their title) whose text has the words typed; a
+// game's hidden features stay hidden. Clearing it, or choosing a tab, brings the tabs back.
+function settingsSearchQuery() { return String($('settings-search')?.value || '').trim().toLowerCase(); }
+function clearSettingsSearch() {
+  const box = $('settings-search');
+  if (!box || !box.value) return;
+  box.value = '';
+  $('settings-panes').classList.remove('searching');
+  for (const el of $('settings-panes').querySelectorAll('.search-miss')) el.classList.remove('search-miss');
+  $('settings-search-empty').hidden = true;
+}
+function searchSettings() {
+  const query = settingsSearchQuery(), panes = $('settings-panes');
+  if (!query) { $('settings-search').value = 'x'; showSettingsTab(settingsTab); return; }
+  panes.classList.add('searching');
+  const words = query.split(/\s+/), matches = text => words.every(word => text.toLowerCase().includes(word));
+  let any = false;
+  for (const tab of settingsTabs) {
+    const pane = $(`pane-${tab}`);
+    let shown = 0;
+    pane.hidden = false;   /* (so a row counts as shown unless a hidden feature of its own hides it) */
+    const holders = [pane, ...pane.querySelectorAll('.gameplay-section')];   /* (Gameplay's sections hold its groups) */
+    for (const holder of holders)
+      for (const el of holder.children) if (!el.classList.contains('settings-group') && !el.classList.contains('gameplay-section')) el.classList.add('search-miss');   /* (headings come back with their rows) */
+    for (const group of pane.querySelectorAll('.settings-group')) {
+      let title = group.previousElementSibling;   /* its heading, past any note between them */
+      while (title && !title.classList.contains('group-title') && !title.classList.contains('settings-group')) title = title.previousElementSibling;
+      if (!title?.classList.contains('group-title')) title = null;
+      const whole = Boolean(title) && matches(title.textContent);
+      let rows = 0;
+      for (const row of group.querySelectorAll('label.switch, label.field, div.field, .path-row')) {
+        const hit = whole || matches(row.textContent);
+        row.classList.toggle('search-miss', !hit);
+        if (hit && !row.closest('[hidden]')) rows++;
+      }
+      group.classList.toggle('search-miss', !rows);
+      title?.classList.toggle('search-miss', !rows);
+      shown += rows;
+    }
+    for (const section of pane.querySelectorAll('.gameplay-section')) {
+      const rows = [...section.querySelectorAll('.settings-group')].some(group => !group.classList.contains('search-miss'));
+      section.classList.toggle('search-miss', !rows);
+      section.querySelector('.section-title')?.classList.toggle('search-miss', !rows);
+    }
+    pane.hidden = $(`tab-${tab}`).hidden || !shown;
+    any ||= !pane.hidden;
+  }
+  for (const tab of settingsTabs) { $(`tab-${tab}`).classList.remove('active'); $(`tab-${tab}`).setAttribute('aria-selected', 'false'); }
+  $('settings-search-empty').hidden = any;
+  panes.scrollTop = 0;
+}
+$('settings-search').addEventListener('input', searchSettings);
+$('settings-search').addEventListener('keydown', event => {
+  if (event.key !== 'Escape' || !$('settings-search').value) return;
+  event.preventDefault();
+  event.stopPropagation();
+  clearSettingsSearch();
+  showSettingsTab(settingsTab);
+});
+// Gameplay's sections: the buttons at its top go to each, and the one for the section in view is lit as you scroll.
+for (const button of document.querySelectorAll('.gameplay-jump-button'))
+  button.addEventListener('click', () => {
+    const section = $(button.dataset.section), panes = $('settings-panes');
+    if (section && panes) panes.scrollTo({ top: panes.scrollTop + sectionTop(section) - 12, behavior: 'smooth' });
+  });
+// where a section starts below the bar of buttons, in the panes' scroll
+function sectionTop(section) {
+  const panes = $('settings-panes'), bar = document.querySelector('.gameplay-jump');
+  return section.getBoundingClientRect().top - panes.getBoundingClientRect().top - (bar?.offsetHeight || 0) + 20;
+}
+function litGameplaySection() {
+  const panes = $('settings-panes'), buttons = [...document.querySelectorAll('.gameplay-jump-button')];
+  if (!buttons.length || settingsTab !== 'gameplay' || panes.classList?.contains('searching')) return;
+  let lit = buttons[0];
+  for (const button of buttons) { const section = $(button.dataset.section); if (section && sectionTop(section) <= 40) lit = button; }
+  if (panes.scrollTop + panes.clientHeight >= panes.scrollHeight - 4) lit = buttons[buttons.length - 1];   /* (the last can't reach the top) */
+  for (const button of buttons) button.classList.toggle('active', button === lit);
+}
+$('settings-panes').addEventListener('scroll', litGameplaySection, { passive: true });
+// Ctrl+F (Cmd+F on a Mac) on Settings goes to the search box.
+window.addEventListener('keydown', event => {
+  if (page !== 'settings' || !(event.ctrlKey || event.metaKey) || event.key?.toLowerCase() !== 'f') return;
+  event.preventDefault();
+  $('settings-search').focus();
+  $('settings-search').select();
+});
 window.coloOpenSplitSettings = () => {
   showPage('settings');
   showSettingsTab('gameplay');
@@ -1588,8 +1677,8 @@ function renderPbrBanner(data) {
     : pbr.outdated ? 'Your Battle Revolution assets need making again'
     : !missing && pbr.noCry ? 'Your Generation 4 Pokémon can have their own cries' : 'Some Battle Revolution assets aren\'t made yet';
   $('pbr-banner-detail').textContent = (pbr.discProblem && pbr.discFound
-    ? `${pbr.discProblem} Choose it under Settings → Gameplay.`
-    : !pbr.discFound ? `Your Battle Revolution disc isn't where it was. Choose it again under Settings → Gameplay, then make them.`
+    ? `${pbr.discProblem} Choose it under Settings → Pokémon.`
+    : !pbr.discFound ? `Your Battle Revolution disc isn't where it was. Choose it again under Settings → Pokémon, then make them.`
     : pbr.outdated ? `A fix changed ${count(pbr.outdated, `${who}'s model`, `${who}'s models`)}. Until they're made again, they look as they did before the fix.`
       : !missing && pbr.noCry ? `${count(pbr.noCry, 'Generation 4 Pokémon cries', 'Generation 4 Pokémon cry')} with a Colosseum Pokémon's voice. Battle Revolution's own is on your disc.`
         : `${count(missing, `${who} has`, `${who} have`)} no ${who === 'Pokémon' ? 'Battle Revolution model' : 'model of its own'} yet.`);
@@ -2141,7 +2230,7 @@ $('make-pbr-models').addEventListener('click', () => action('makePbrModels'));
 $('pbr-check-close').addEventListener('click', () => { pbrCheckDismissed = $('pbr-check').dataset.key; $('pbr-check').hidden = true; });
 $('pbr-banner-make').addEventListener('click', () => {
   if (pbrDiscUsable(current?.pbr)) action('makePbrModels');
-  else { showPage('settings'); showSettingsTab('gameplay'); }
+  else { showPage('settings'); showSettingsTab('gameplay'); $('pbr-row')?.scrollIntoView?.({ block: 'center' }); }
 });
 $('open-languages').addEventListener('click', () => window.colo.openLanguages().catch(showError));
 for (const key of [...SELECTS, ...SWITCHES]) if (key !== 'generation4Pokemon' && key !== 'pbrReplaceAll' && key !== 'pbrTextures') $(key).addEventListener('change', saveSettings);
