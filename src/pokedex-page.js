@@ -78,7 +78,9 @@ function applyFilter() {
 }
 
 function renderFilters() {
-  $('pokedex-filters').replaceChildren(...FILTERS.filter(item => !item.onlyWhenAny || species.some(item.matches)).map(item => {
+  const shown = FILTERS.filter(item => !item.onlyWhenAny || species.some(item.matches));
+  if (!shown.some(item => item.id === filter)) filter = 'all';
+  $('pokedex-filters').replaceChildren(...shown.map(item => {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'pokedex-filter';
@@ -151,7 +153,8 @@ function renderList() {
 function asLook(entry, id) {
   const look = entry.forms.find(item => item.id === id);
   if (!look?.note) return entry;
-  return { ...entry, ...look.info, status: { ...entry.status, label: look.title, note: look.note, locked: false, kind: 'form' } };
+  const hiddenAbility = look.info?.abilities ? null : entry.hiddenAbility;
+  return { ...entry, ...look.info, hiddenAbility, status: { ...entry.status, label: look.title, note: look.note, locked: false, kind: 'form' } };
 }
 
 function renderInfo(entry) {
@@ -179,7 +182,8 @@ function renderInfo(entry) {
   }));
   $('pokedex-height').textContent = entry.height;
   $('pokedex-weight').textContent = entry.weight;
-  $('pokedex-abilities').textContent = entry.abilities.join(', ') || '—';
+  const abilities = [...(entry.abilities || []), ...(entry.hiddenAbility ? [`${entry.hiddenAbility} (Hidden)`] : [])];
+  $('pokedex-abilities').textContent = abilities.join(', ') || '—';
   renderEvolutions(entry);
 }
 
@@ -428,11 +432,12 @@ $('pokedex-make-pack').addEventListener('click', async () => {
 });
 $('pokedex-reload').addEventListener('click', () => {
   if (loading) return;
+  const keep = selected?.key || null;
   $('pokedex-pack-made').hidden = true;
   stopViewer();
   species = null;
   selected = null;
-  loading = load();
+  loading = load(keep);
 });
 $('pokedex-retry').addEventListener('click', () => {
   stopViewer();
@@ -453,8 +458,9 @@ window.coloPokedex = {
     cry.stop();
     stopViewer();
   },
-  // Another game was chosen: its Pokédex is its own disc's, read again when the page shows.
+  // Another game, battle rule, generation setting or asset set changed: read the Pokédex again when the page shows.
   reset() {
+    const keep = selected?.key || null;
     request++;
     $('pokedex-pack-made').hidden = true;
     cry.stop();
@@ -462,6 +468,6 @@ window.coloPokedex = {
     species = null;
     selected = null;
     listFor++;
-    loading = visible ? load() : null;
+    loading = visible ? load(keep) : null;
   },
 };

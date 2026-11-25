@@ -1177,6 +1177,15 @@ function laterAbility(id) {
   } catch { return undefined; }
 }
 
+// An ability's display name from the game's table (1..77) or a later generation's (78+).
+function abilityDisplayName(tables, id) {
+  if (!id) return null;
+  const own = tables?.abilityNames?.get(id)
+    ?? (tables?.abilities ? [...tables.abilities].find(([, value]) => value === id)?.[0] : null);
+  const name = own ?? laterAbility(id);
+  return name ? pokedex.displayName(name) : null;
+}
+
 // Where a later generation's Pokémon's looks and cry are from, for the Pokédex.
 function generationNote(each) {
   const is3ds = each.assetSource === '3ds' || each.generation >= 5 || each.national >= 494;
@@ -1223,8 +1232,9 @@ function pokedexEntries(pokemon, tables) {
     const row = each.row, types = [TYPES[row[ROW.types]], TYPES[row[ROW.types + 1]]];
     const height = row.readUInt16BE(ROW.height);
     const abilities = [row[ROW.abilities], row[ROW.abilities + 1]].filter(Boolean)
-      .map(id => [...tables.abilities].find(([, value]) => value === id)?.[0] ?? laterAbility(id)).filter(Boolean).map(pokedex.displayName);
+      .map(id => abilityDisplayName(tables, id)).filter(Boolean);
     const { evolutions, evolutionWays } = rowEvolutions(row, ROW.evolutions, pokemon, tables, each.generation ? each.national : null);
+    const shownGeneration = each.generation && each.national >= 494 && each.national <= 649 ? 5 : each.generation;
     return { pack: { id: each.pack, name: each.packName, author: each.author, credits: each.credits, folder: each.folder, key: each.key },
       packId: each.id, national: each.national || each.base.national, base: each.base.name, form: each.form,
       name: each.form ? `${pokedex.displayName(each.name)} (${each.form})` : pokedex.displayName(each.name), description: each.description,
@@ -1234,12 +1244,41 @@ function pokedexEntries(pokemon, tables) {
       evolutions, evolutionWays,
       hasModel: Boolean(each.assets.model), hasShinyModel: Boolean(each.assets.modelShiny),
       status: each.generation
-        ? { kind: 'generation', label: `Generation ${each.generation}`, locked: false,
+        ? { kind: 'generation', label: `Generation ${shownGeneration}`, locked: false,
           note: generationNote(each) }
         : { kind: 'pack', label: each.form ? `${each.form} form, from a pack` : 'From a pack', locked: false,
           note: `${each.packName}${each.author ? `, by ${each.author}` : ''}. Based on ${each.base.name}.${each.description ? ` ${each.description}` : ''}` +
             `${each.credits ? ` Credits: ${each.credits}` : ''}` } };
   });
+}
+
+// Overlay the active generation settings (Fairy type, Gen 4/6 regular abilities, Gen 6 base stats and hidden abilities)
+// onto the Pokédex's disc species and pack/generation entries. Works for both Colosseum and XD (disc species match by
+// National Pokédex number; pack/generation entries match by Colosseum packId).
+function applyBuiltToPokedex(species, packs, { tables, built } = {}) {
+  if (!built) return;
+  const speciesByNational = new Map(species.map(entry => [entry.national, entry]));
+  const idToNational = new Map((tables?.species || []).map(each => [each.id, each.national]));
+  const packById = new Map(packs.map(entry => [entry.packId, entry]));
+  if (built.types) {
+    const fairy = require('./generations').loadFairy();
+    for (const entry of species) if (fairy.species[entry.national]) entry.types = [...new Set(fairy.species[entry.national])];
+  }
+  for (const change of built.rules?.species || []) {
+    const entry = speciesByNational.get(idToNational.get(change.id));
+    if (!entry) continue;
+    const abilities = [...new Set((change.abilities || []).map(id => abilityDisplayName(tables, id)).filter(Boolean))];
+    if (abilities.length) entry.abilities = abilities;
+  }
+  for (const change of built.speciesChanges || []) {
+    const entry = idToNational.has(change.id) ? speciesByNational.get(idToNational.get(change.id)) : packById.get(change.id);
+    if (!entry) continue;
+    if (Array.isArray(change.stats) && change.stats.length === 6) entry.stats = [...change.stats];
+    if (change.hidden) {
+      const hidden = abilityDisplayName(tables, change.hidden);
+      if (hidden) entry.hiddenAbility = hidden;
+    }
+  }
 }
 
 // A Pokémon's other models made from a 3DS ROM (scripts/3ds2pkx make_pack.py), in `folder`/forms/<name>/ and listed in
@@ -1299,7 +1338,7 @@ function formModelFile(folder, look) {
 }
 
 module.exports = { FIRST_ID, LAST_ID, FIRST_PAST_GAP, REGISTRY_FILE, FILES, packsDirectory, readGameTables, readRegistry, writeRegistry, assignIds,
-  decodePng, resize, encodeRgba8, spriteFile, battleRevolutionFace, boxIcon, buildRow, evolutionBytes, loadPacks, compile, generationPokemon, ownRows, ownModels, OWN_NATIONALS, pokedexEntries, readCry,
+  decodePng, resize, encodeRgba8, spriteFile, battleRevolutionFace, boxIcon, buildRow, evolutionBytes, loadPacks, compile, generationPokemon, ownRows, ownModels, OWN_NATIONALS, pokedexEntries, applyBuiltToPokedex, laterAbility, abilityDisplayName, readCry,
   exportSpec, formatJson, ENTRY_FILE, PACK_FILE, FOLDER, FORM_LOOK, formLooks, formModelFile,
   // A species the original game hasn't: a pack's, or a later generation's
   isPackSpecies: id => (id >= FIRST_ID && id <= LAST_ID) || id >= 413 };

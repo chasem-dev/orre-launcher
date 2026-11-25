@@ -1,6 +1,7 @@
 {
   "beta": {
     "launcher": [
+      "Fixed the Pokédex showing stale types, abilities, or base stats after changing Battle rules, Generation 4/5/6 Pokémon, or Customize rules settings: it now refreshes automatically and shows updated Gen 4 and Gen 6 abilities, hidden abilities, Fairy types, and Gen 6 base stats right away.",
       "Edit Pokémon on the Pokémon tab now supports Generation 5 and 6 Pokémon (Victini to Volcanion and their alternate forms), their moves and held items, Fairy-type moves and hidden abilities whenever those settings are turned on under Gameplay.",
       "Customize rules under Settings → Gameplay now opens expanded by default instead of collapsed.",
       "Fixed \"Launcher update check failed: Cannot read properties of undefined (reading 'battleRules')\" in the top bar, which showed when your save had a Story party and your online room was set to Diamond and Pearl battle rules. The Story party's Pokémon that a room for both games can't take are listed under X and Y rules too.",

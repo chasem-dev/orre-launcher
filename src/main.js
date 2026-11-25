@@ -1184,9 +1184,11 @@ function withFairyType(settings) {
   return out;
 }
 // The packs in their folder, and the later generations' Pokémon, moves and rules the settings ask for.
-function readPokemonPacks(rom, settings = config.settings) {
+// respectBinary: when writing for a launch, clamp to what the installed game binary supports; the Pokédex passes false
+// so it always reflects the player's current settings even before the next build/update.
+function readPokemonPacks(rom, settings = config.settings, { respectBinary = true } = {}) {
   if (packTables?.rom !== rom) packTables = { rom, tables: pokemonPacks.readGameTables(rom) };
-  settings = withFairyType(settings);
+  if (respectBinary) settings = withFairyType(settings);
   const { tables } = packTables;
   const packs = fs.existsSync(pokemonPacksDirectory())
     ? pokemonPacks.loadPacks(pokemonPacksDirectory(), tables, pokemonPacks.readRegistry(currentSaveDirectory()))
@@ -1656,7 +1658,7 @@ function generationDex(rom, generation = 4) {
   if (packTables?.rom !== rom) packTables = { rom, tables: pokemonPacks.readGameTables(rom) };
   const dirOf = n => (n >= 494 ? usumModels() : pbrModels());
   const made = n => fs.existsSync(path.join(dirOf(n), String(n), pokemonPacks.FILES.model)) && fs.existsSync(path.join(dirOf(n), String(n), pokemonPacks.FILES.body));
-  const fairyType = Boolean(withFairyType(config.settings).fairyType);
+  const fairyType = Boolean(generations.normalize(withFairyType(config.settings || {})).fairyType);
   // the generation's Pokémon and each earlier one's: a Generation 6 party picks the fourth's, fifth's and sixth's
   const built = generations.build(packTables.tables, { battleRules: generation, generationPokemon: generations.pokemonGenerations(generation), fairyType });
   const { pokemon } = pokemonPacks.generationPokemon(packTables.tables, built);
@@ -1679,7 +1681,7 @@ function generationDex(rom, generation = 4) {
 // made Fairy types, and what each Pokémon can learn of its moves in generation 6 by the game's numbers, with each
 // earlier form's ([move, how]). null with the setting off.
 function fairyBattleData(rom) {
-  if (!withFairyType(config.settings).fairyType) return null;
+  if (!generations.normalize(withFairyType(config.settings || {})).fairyType) return null;
   if (packTables?.rom !== rom) packTables = { rom, tables: pokemonPacks.readGameTables(rom) };
   const tables = packTables.tables, fairy = generations.loadFairy(), gen6 = generations.load(6);
   const moves = generations.fairyMoves({ ...tables, types: [...tables.types, 'fairy'] }).map(move => {
@@ -1733,7 +1735,7 @@ function pokedexList(rom) {
   const own = config.game === games.DEFAULT;
   try {
     if (own || teamDiscReady()) {
-      const loaded = readPokemonPacks(packsDisc(rom, 'The Pokédex\'s packs and later generations are read'));
+      const loaded = readPokemonPacks(packsDisc(rom, 'The Pokédex\'s packs and later generations are read'), config.settings, { respectBinary: false });
       problems = loaded.problems.map(problem => `${packLabel(problem)}: ${problem.message}`);
       const all = [...loaded.pokemon, ...loaded.generationPokemon];
       const entries = pokemonPacks.pokedexEntries(all, loaded.tables);
@@ -1752,11 +1754,9 @@ function pokedexList(rom) {
       // The game's own Pokémon's evolutions into a later generation's (Yanma into Yanmega) or a pack's ("evolvesFrom"), and
       // how those can be had
       species = species.map(entry => ({ ...entry }));
-      // with the Fairy type, the game's own Pokémon generation 6 made Fairy types are shown as they are in the game
-      if (loaded.built.types) {
-        const fairy = generations.loadFairy();
-        for (const entry of species) if (fairy.species[entry.national]) entry.types = [...new Set(fairy.species[entry.national])];
-      }
+      // Overlay the active generation settings (Fairy types, updated Gen 4/6 regular abilities, Gen 6 base stats and
+      // hidden abilities) so the Pokédex matches the player's current battle rules and Customize rules choices.
+      pokemonPacks.applyBuiltToPokedex(species, packs, loaded);
       for (const row of loaded.ownRows) {
         const from = species.find(entry => entry.national === loaded.tables.species.find(each => each.id === row.id)?.national);
         if (!from) continue;

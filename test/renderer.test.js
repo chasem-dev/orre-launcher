@@ -1307,3 +1307,33 @@ test('index.html loads mechanics.js and every helper script renderer.js reads be
     assert.ok(at >= 0 && at < rendererAt, `${dependency} must load before renderer.js`);
   }
 });
+
+test('changing battle rules, generation Pokémon, Fairy type, Customize rules or asset counts resets the Pokédex cache', async () => {
+  let pokedexResets = 0, pokemonDexResets = 0;
+  const data = state();
+  data.config.settings = { ...data.config.settings, battleRules: 3, generationPokemon: [], fairyType: false, mechanicChanges: {} };
+  const ui = await renderer(data, null, { releases: [], unseen: [], current: '0.1.39' }, {
+    coloPokedex: { reset() { pokedexResets++; } },
+    coloPokemon: { resetDex() { pokemonDexResets++; } },
+  });
+  assert.equal(pokedexResets, 0, 'initial render does not reset');
+  await ui.refresh();
+  assert.equal(pokedexResets, 0, 'unchanged refresh does not reset');
+
+  data.config.settings = { ...data.config.settings, battleRules: 6, fairyType: true };
+  await ui.refresh();
+  assert.equal(pokedexResets, 1, 'battleRules / fairyType change resets Pokédex');
+  assert.equal(pokemonDexResets, 1, 'battleRules / fairyType change resets Pokémon page dex cache');
+
+  data.config.settings = { ...data.config.settings, generationPokemon: [4, 6] };
+  await ui.refresh();
+  assert.equal(pokedexResets, 2, 'generationPokemon change resets Pokédex');
+
+  data.config.settings = { ...data.config.settings, mechanicChanges: { hiddenAbilities: false } };
+  await ui.refresh();
+  assert.equal(pokedexResets, 3, 'Customize rules change resets Pokédex');
+
+  data.usum = { made: 12 };
+  await ui.refresh();
+  assert.equal(pokedexResets, 4, '3DS asset conversion progress resets Pokédex');
+});

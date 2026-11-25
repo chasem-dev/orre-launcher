@@ -475,3 +475,97 @@ test('the disc\'s models read as the game draws them', withDisc, () => {
 test('a form the Pokémon does not have is turned down', withDisc, () => {
   assert.throws(() => pokedex.create().model(disc, 1, '../common'), /no such model/);
 });
+
+test('applyBuiltToPokedex updates Fairy types, Gen 4/6 regular abilities, Gen 6 base stats and hidden abilities', () => {
+  const pokemonPacks = require('../src/pokemon-packs');
+  const generations = require('../src/generations');
+  // Use XD-shifted IDs on species entries to confirm matching works via National Pokédex number for both games.
+  const speciesList = [
+    { id: 1025, national: 25, name: 'Pikachu', types: ['Electric'], abilities: ['Static'], stats: [35, 55, 30, 50, 40, 90] },
+    { id: 1036, national: 36, name: 'Clefable', types: ['Normal'], abilities: ['Cute Charm'], stats: [95, 70, 73, 85, 90, 60] },
+    { id: 1212, national: 212, name: 'Scizor', types: ['Bug', 'Steel'], abilities: ['Swarm'], stats: [70, 130, 100, 55, 80, 65] },
+    { id: 1282, national: 282, name: 'Gardevoir', types: ['Psychic'], abilities: ['Synchronize', 'Trace'], stats: [68, 65, 65, 125, 115, 80] },
+  ];
+  const packsList = [
+    { packId: generations.speciesId(658), national: 658, name: 'Greninja', types: ['Water', 'Dark'], abilities: ['Torrent'], stats: [72, 95, 67, 103, 71, 122] },
+    { packId: generations.speciesId(700), national: 700, name: 'Sylveon', types: ['Fairy'], abilities: ['Cute Charm'], stats: [95, 65, 65, 110, 130, 60] },
+  ];
+  const tables = {
+    species: [
+      { id: 25, national: 25 },
+      { id: 36, national: 36 },
+      { id: 212, national: 212 },
+      { id: 282, national: 282 },
+    ],
+    abilityNames: new Map([[31, 'Lightningrod'], [56, 'Cute Charm'], [68, 'Swarm']]),
+  };
+  const built = {
+    types: { enabled: true },
+    rules: {
+      species: [
+        { id: 36, abilities: [56, generations.colosseumAbility(98)] },   // Cute Charm, Magic Guard
+        { id: 212, abilities: [68, generations.colosseumAbility(101)] }, // Swarm, Technician
+      ],
+    },
+    speciesChanges: [
+      { id: 25, stats: [35, 55, 40, 50, 50, 90], hidden: 31 },
+      { id: 36, stats: [95, 70, 73, 95, 90, 60], hidden: generations.colosseumAbility(109) }, // Unaware
+      { id: 212, stats: null, hidden: generations.colosseumAbility(135) }, // Light Metal
+      { id: 282, stats: null, hidden: generations.colosseumAbility(140) }, // Telepathy
+      { id: generations.speciesId(658), stats: null, hidden: generations.colosseumAbility(168) }, // Protean
+      { id: generations.speciesId(700), stats: null, hidden: generations.colosseumAbility(182) }, // Pixilate
+    ],
+  };
+  pokemonPacks.applyBuiltToPokedex(speciesList, packsList, { tables, built });
+  assert.deepEqual(speciesList[0].stats, [35, 55, 40, 50, 50, 90]);
+  assert.equal(speciesList[0].hiddenAbility, 'Lightningrod');
+  assert.deepEqual(speciesList[1].types, ['Fairy']);
+  assert.deepEqual(speciesList[1].abilities, ['Cute Charm', 'Magic Guard']);
+  assert.equal(speciesList[1].hiddenAbility, 'Unaware');
+  assert.deepEqual(speciesList[1].stats, [95, 70, 73, 95, 90, 60]);
+  assert.deepEqual(speciesList[2].abilities, ['Swarm', 'Technician']);
+  assert.equal(speciesList[2].hiddenAbility, 'Light Metal');
+  assert.deepEqual(speciesList[3].types, ['Psychic', 'Fairy']);
+  assert.equal(speciesList[3].hiddenAbility, 'Telepathy');
+  assert.deepEqual(packsList[0].abilities, ['Torrent']);
+  assert.equal(packsList[0].hiddenAbility, 'Protean');
+  assert.equal(packsList[1].hiddenAbility, 'Pixilate');
+});
+
+test('the Pokédex overlays Gen 5/6 Fairy types, updated abilities, hidden abilities and Gen 6 base stats on the disc', withDisc, () => {
+  const pokemonPacks = require('../src/pokemon-packs');
+  const generations = require('../src/generations');
+  const tables = pokemonPacks.readGameTables(disc);
+  const built = generations.build(tables, { battleRules: 6, generationPokemon: [4, 6], fairyType: true });
+  const fromGenerations = pokemonPacks.generationPokemon(tables, built);
+  const discSpecies = pokedex.readPokedex(disc).map(entry => ({ ...entry }));
+  const packs = pokemonPacks.pokedexEntries(fromGenerations.pokemon, tables);
+  pokemonPacks.applyBuiltToPokedex(discSpecies, packs, { tables, built });
+
+  const findDisc = name => discSpecies.find(entry => entry.name === name);
+  const findPack = national => packs.find(entry => entry.national === national);
+
+  assert.deepEqual(findDisc('Clefable').types, ['Fairy']);
+  assert.deepEqual(findDisc('Clefable').abilities, ['Cute Charm', 'Magic Guard']);
+  assert.equal(findDisc('Clefable').hiddenAbility, 'Unaware');
+  assert.deepEqual(findDisc('Clefable').stats, [95, 70, 73, 95, 90, 60]);
+
+  assert.deepEqual(findDisc('Gardevoir').types, ['Psychic', 'Fairy']);
+  assert.equal(findDisc('Gardevoir').hiddenAbility, 'Telepathy');
+
+  assert.deepEqual(findDisc('Scizor').abilities, ['Swarm', 'Technician']);
+  assert.equal(findDisc('Scizor').hiddenAbility, 'Light Metal');
+
+  assert.deepEqual(findDisc('Pikachu').stats, [35, 55, 40, 50, 50, 90]);
+  assert.equal(findDisc('Pikachu').hiddenAbility, 'Lightningrod');
+  assert.equal(findDisc('Ninetales').hiddenAbility, 'Drought');
+
+  assert.equal(findPack(494).status.label, 'Generation 5');
+  assert.deepEqual(findPack(494).abilities, ['Victory Star']);
+  assert.equal(findPack(658).status.label, 'Generation 6');
+  assert.deepEqual(findPack(658).abilities, ['Torrent']);
+  assert.equal(findPack(658).hiddenAbility, 'Protean');
+  assert.deepEqual(findPack(700).types, ['Fairy']);
+  assert.deepEqual(findPack(700).abilities, ['Cute Charm']);
+  assert.equal(findPack(700).hiddenAbility, 'Pixilate');
+});

@@ -773,12 +773,38 @@ function showChosenGame(id) {
 }
 
 // The game picker, and what the chosen game has: its disc, and the tabs and settings of features it doesn't have hidden.
-// The Pokédex and the Jukebox read the chosen game's disc, so they start again when another game is chosen.
-let renderedGame = null;
+// The Pokédex and the Jukebox read the chosen game's disc, so they start again when another game is chosen; the Pokédex
+// also refreshes whenever battle rules, generation Pokémon, Fairy type, Customize rules or asset settings change.
+let renderedGame = null, renderedPokedexKey = null;
+function pokedexKey(data) {
+  const chosen = chosenGame(data), settings = data.config?.settings || {};
+  const changes = settings.mechanicChanges && typeof settings.mechanicChanges === 'object'
+    ? Object.keys(settings.mechanicChanges).sort().map(key => [key, settings.mechanicChanges[key]])
+    : [];
+  const gens = Array.isArray(settings.generationPokemon) ? [...settings.generationPokemon].sort() : [];
+  return JSON.stringify([
+    chosen.id,
+    data.config?.rom || '',
+    data.config?.games?.colosseum?.rom || '',
+    Number(settings.battleRules) || 3,
+    gens,
+    Boolean(settings.fairyType),
+    changes,
+    Boolean(settings.pbrReplaceAll),
+    Boolean(settings.textures),
+    data.pbr?.made || 0,
+    data.usum?.made || 0
+  ]);
+}
 function renderGame(data) {
-  const chosen = chosenGame(data), locked = Boolean(data.active) || setupPending;
-  if (renderedGame && renderedGame !== chosen.id) { window.coloPokedex?.reset?.(); window.coloJukebox?.reset?.(); }
+  const chosen = chosenGame(data), locked = Boolean(data.active) || setupPending, dexKey = pokedexKey(data);
+  if (renderedGame && renderedGame !== chosen.id) window.coloJukebox?.reset?.();
+  if (renderedPokedexKey && renderedPokedexKey !== dexKey) {
+    window.coloPokedex?.reset?.();
+    window.coloPokemon?.resetDex?.();
+  }
   renderedGame = chosen.id;
+  renderedPokedexKey = dexKey;
   showChosenGame(choosingGame || chosen.id);
   for (const id of GAME_IDS) $(`game-${id}`).disabled = locked;
   // the art can't be clicked to choose either while a task runs

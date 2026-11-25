@@ -1243,4 +1243,10 @@ $('save-import-all').addEventListener('click', () => {
 $('save-import-go').addEventListener('click', bringImport);
 $('save-import').addEventListener('close', () => { if (!importBusy) { importPicked = new Map(); window.colo.saveImport('close').then(view => { importView = view; }).catch(() => {}); } });
 
-window.coloPokemon = { show, hide, refresh };
+function resetDex() {
+  dex = null;
+  dexFor = null;
+  if (visible && data) refresh();
+}
+
+window.coloPokemon = { show, hide, refresh, resetDex };
