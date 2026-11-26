@@ -17,6 +17,8 @@ contextBridge.exposeInMainWorld('colo', {
   useGbaSave: (socket, file) => ipcRenderer.invoke('use-gba-save', socket, file),
   gbaSuggestions: () => ipcRenderer.invoke('gba-suggestions'),
   openGbaBackups: () => ipcRenderer.invoke('open-gba-backups'),
+  receiveJirachi: socket => ipcRenderer.invoke('receive-jirachi', socket),
+  receiveJirachiColosseum: () => ipcRenderer.invoke('receive-jirachi-colosseum'),
   setGameSource: value => ipcRenderer.invoke('set-game-source', value),
   updateChannels: () => ipcRenderer.invoke('update-channels'),
   chooseRepo: () => ipcRenderer.invoke('choose-repo'),

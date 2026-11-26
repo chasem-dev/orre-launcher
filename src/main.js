@@ -22,6 +22,8 @@ const updateChannel = require('./update-channel');
 const gameSource = require('./game-source');
 const gcAdapter = require('./gc-adapter');
 const gbaLink = require('./gba');
+const bonusDisc = require('./bonus-disc');
+const wishmaker = require('./wishmaker');
 const gen3Save = require('./gen3-save');
 const appImageUpdate = require('./appimage-update');
 const bindings = require('./bindings');
@@ -319,6 +321,10 @@ function loadConfig() {
     online: parties.normalize(saved.online),
     // The Game Boy Advance's BIOS, and each socket's Game Pak and save (Settings → Game Boy Advance).
     gba: gbaLink.normalize(saved.gba),
+    // The player's Pokémon Colosseum Bonus Disc, chosen when they first receive WISHMAKER Jirachi.
+    bonusDisc: typeof saved.bonusDisc === 'string' ? saved.bonusDisc : '',
+    // The Colosseum trainer IDs given WISHMAKER Jirachi from the Pokémon page: one each.
+    jirachiTrainers: Array.isArray(saved.jirachiTrainers) ? saved.jirachiTrainers.filter(Number.isInteger).map(id => id >>> 0) : [],
     // Full screen, maximized or normal: the launcher's window opens the way it was left.
     launcherWindow: windowMode.normalize(saved.launcherWindow)
   };
@@ -2605,6 +2611,30 @@ function onlineTrades() {
   return onlineTradesInstance;
 }
 
+// The WISHMAKER Jirachi gift (src/bonus-disc.js): from the player's Bonus Disc, the one chosen before or one they choose
+// now (kept for next time); or, for a player without the disc, the same gift written out in the launcher
+// (bonusDisc.builtIn), which makes the same Jirachi. null when they cancel.
+async function bonusGift() {
+  if (config.bonusDisc && fs.existsSync(config.bonusDisc)) {
+    try { return bonusDisc.read(config.bonusDisc); } catch (error) { log(`The Bonus Disc couldn't be read: ${error.message}`); }
+  }
+  const { response } = await dialog.showMessageBox(window, { type: 'question', buttons: ['Choose Bonus Disc…', 'Continue without it', 'Cancel'],
+    defaultId: 0, cancelId: 2, message: 'Use your Pokémon Colosseum Bonus Disc?',
+    detail: "Jirachi is made from your own copy of the Bonus Disc (an .iso, .gcm or .ciso of PC6E01). Without one, the launcher makes the same Jirachi from what it knows of the disc's gift." });
+  if (response === 2) return null;
+  if (response === 1) {
+    log('WISHMAKER Jirachi: made without the Bonus Disc.');
+    return bonusDisc.builtIn();
+  }
+  const chosen = await dialog.showOpenDialog(window, { title: 'Choose a copy of your Pokémon Colosseum Bonus Disc',
+    filters: [{ name: 'GameCube discs', extensions: ['iso', 'gcm', 'ciso'] }, { name: 'All files', extensions: ['*'] }], properties: ['openFile'] });
+  if (chosen.canceled || !chosen.filePaths[0]) return null;
+  const gift = bonusDisc.read(chosen.filePaths[0]);
+  config.bonusDisc = chosen.filePaths[0];
+  saveConfig();
+  return gift;
+}
+
 function onlineTradeAccess(game) {
   if (storyGame !== game && heldGame()?.game === game) return null;
   if (storyGame === game) {
@@ -4534,6 +4564,64 @@ function registerHandlers() {
   });
   // Gen 3 saves where emulators keep them (a few folders a few levels down), for Settings to offer.
   ipcMain.handle('gba-suggestions', () => gbaLink.suggestions(config.rom ? [path.dirname(config.rom)] : []));
+  // WISHMAKER Jirachi into the Colosseum save itself, for players without a GBA game: made as on the disc, seeded by
+  // the save's trainer ID instead of a GBA save's checksum (the same Jirachi for a save every time), and brought in as
+  // the Pokémon page's Import brings a GBA Pokémon (save-import.js, then the card or the running game). One for each
+  // trainer ID: the IDs given one are kept with the launcher's settings, so trading it away doesn't make another.
+  ipcMain.handle('receive-jirachi-colosseum', async () => {
+    const game = 'colosseum';
+    if (config.game !== game) throw new Error('Choose Pokémon Colosseum first: WISHMAKER Jirachi goes into its save.');
+    if (storyGame === game && !storyLive?.current()?.head.loaded) throw new Error('Colosseum is running: continue your save in it first, or close it.');
+    if (storyGame !== game && heldGame()?.game === game) throw new Error(heldMessage(game));
+    let card = null;
+    try { card = savePokemon.readCard(saveDirectoryOf(game), game); } catch (_) { /* no save yet */ }
+    if (!card) throw new Error("There's no Colosseum save yet: play and save once, then receive Jirachi.");
+    const trainerId = card.trainerId >>> 0;
+    if (config.jirachiTrainers.includes(trainerId)) throw new Error('This save has already been given WISHMAKER Jirachi. You can only receive one per save.');
+    const gift = await bonusGift();
+    if (!gift) return { message: '' };
+    const jirachi = wishmaker.make(gift, wishmaker.colosseumSeed(trainerId));
+    const judged = saveImport.judge(saveImport.fromGba(jirachi.data), importReceiver(game));
+    if (!judged.bytes) throw new Error(judged.problems[0] || "Colosseum couldn't take Jirachi.");
+    const access = onlineTradeAccess(game);
+    if (!access) throw new Error("This version of Colosseum can't take a Pokémon while it runs: update it, or close it and try again.");
+    const at = savePokemon.COLOSSEUM.at, bytes = judged.bytes;
+    const identity = { species: bytes.readUInt16BE(at.species), rnd: bytes.readUInt32BE(at.rnd), trainer: bytes.readUInt32BE(at.trainer) };
+    if (access.has(identity)) throw new Error('This save has already been given WISHMAKER Jirachi. You can only receive one per save.');
+    const given = await access.tradeGive(bytes);
+    if (!given.ok) throw new Error(given.code === 'full' ? 'Your party and PC boxes are full: make room for Jirachi, then try again.' : `Colosseum couldn't take Jirachi (${given.code}).`);
+    config.jirachiTrainers = [...config.jirachiTrainers, trainerId];
+    saveConfig();
+    log(`WISHMAKER Jirachi is in the Colosseum save (trainer ${trainerId}, ${given.area === 'party' ? 'party' : `box ${given.box + 1}`}).`);
+    broadcast('pokemon-changed');
+    const item = jirachi.item === gift.items[0] ? 'a Ganlon Berry' : 'a Salac Berry';
+    return { message: `JIRACHI is in your ${given.area === 'party' ? 'party' : `PC, box ${given.box + 1}`}, holding ${item}.` };
+  });
+  // WISHMAKER Jirachi from the Bonus Disc into a socket's save (src/wishmaker.js), as the disc's GBA program gives it.
+  // The Bonus Disc is the player's own, chosen once; the save is backed up to the GBA backups folder first.
+  ipcMain.handle('receive-jirachi', async (_event, socket) => {
+    if (operation || active) throw new Error('Finish the current task before changing game files.');
+    const entry = config.gba.sockets[String(socket)];
+    if (!entry) throw new Error('Choose your save first.');
+    const pakCode = entry.rom ? gbaLink.checkGamePak(entry.rom).code || '' : '';
+    const why = wishmaker.problem(fs.readFileSync(entry.save), { pakCode });
+    if (why) throw new Error(why);
+    const gift = await bonusGift();
+    if (!gift) return state();
+    const before = fs.readFileSync(entry.save);
+    const result = wishmaker.give(before, gift, { pakCode });
+    const folder = gbaBackupFolder();
+    fs.mkdirSync(folder, { recursive: true });
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const backup = path.join(folder, `${path.parse(entry.save).name} before WISHMAKER Jirachi ${stamp}${path.extname(entry.save)}`);
+    fs.writeFileSync(backup, before, { flag: 'wx' });
+    const temporary = `${entry.save}.jirachi`;
+    fs.writeFileSync(temporary, result.buffer);
+    fs.renameSync(temporary, entry.save);
+    log(`WISHMAKER Jirachi given to ${entry.save} (${result.game}), backed up to ${backup}.`);
+    const item = result.item === gift.items[0] ? 'a Ganlon Berry' : 'a Salac Berry';
+    return { ...state(), message: `JIRACHI joined your party, holding ${item}. Your save was backed up first.` };
+  });
   ipcMain.handle('open-gba-backups', () => {
     fs.mkdirSync(gbaBackupFolder(), { recursive: true });
     return shell.openPath(gbaBackupFolder());

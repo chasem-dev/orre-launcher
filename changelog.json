@@ -1,6 +1,8 @@
 {
   "beta": {
     "launcher": [
+      "WISHMAKER Jirachi: receive the Pokémon Colosseum Bonus Disc's Jirachi, made exactly as the disc makes it, from your own copy of the Bonus Disc or, if you don't have one, without it. Give it to your linked Ruby, Sapphire, FireRed, LeafGreen or Emerald save under Settings → Game Boy Advance (Receive Jirachi), or straight into your Colosseum save from the Pokémon tab's Import menu. One per save, and your save is backed up first.",
+      "Fixed Ruby and Sapphire saves that have a Battle Tower record being read as Emerald, which showed Emerald's advice for linking.",
       "Fixed later generations, Gen 6 types and Battle Revolution models not reaching the game in Colosseum and XD when you had many of them on at once, such as Replace all models with Generation 4 and 6 Pokémon. If the game's Pokémon still come to more than the game can read, the launcher leaves out Replace all models and says so in the log, or tells you what to turn off, instead of starting the game without them.",
       "Fixed the Pokédex showing stale types, abilities, or base stats after changing Battle rules, Generation 4/5/6 Pokémon, or Customize rules settings: it now refreshes automatically and shows updated Gen 4 and Gen 6 abilities, hidden abilities, Fairy types, and Gen 6 base stats right away.",
       "Edit Pokémon on the Pokémon tab now supports Generation 5 and 6 Pokémon (Victini to Volcanion and their alternate forms), their moves and held items, Fairy-type moves and hidden abilities whenever those settings are turned on under Gameplay.",

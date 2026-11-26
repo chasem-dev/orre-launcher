@@ -13,12 +13,18 @@ const SECTION = 0x1000;
 const SECTIONS = 14;
 const SIGNATURE = 0x08012025;
 const SECTION_SIZES = [3884, 3968, 3968, 3968, 3848, 3968, 3968, 3968, 3968, 3968, 3968, 3968, 3968, 2000];
-// From pret's decompilations (include/global.h): SaveBlock1's party.
+// From pret's decompilations (include/global.h): SaveBlock1's party, the Pokédex's two copies of the seen flags
+// (seen1, seen2), and the gift ribbons, which ExternalEventData and then ExternalEventFlags follow (ribbons): the
+// port's host/gba_virtual.c has the same table.
 const GAMES = {
-  rs: { name: 'Ruby/Sapphire', partyCount: 0x234, party: 0x238, flags: 0x1220, region: 'Hoenn' },
-  frlg: { name: 'FireRed/LeafGreen', partyCount: 0x34, party: 0x38, region: 'Kanto' },
-  e: { name: 'Emerald', partyCount: 0x234, party: 0x238, region: 'Hoenn' }
+  rs: { name: 'Ruby/Sapphire', partyCount: 0x234, party: 0x238, flags: 0x1220, seen1: 0x938, seen2: 0x3A8C, ribbons: 0x3110, region: 'Hoenn' },
+  frlg: { name: 'FireRed/LeafGreen', partyCount: 0x34, party: 0x38, seen1: 0x5F8, seen2: 0x3A18, ribbons: 0x309C, region: 'Kanto' },
+  e: { name: 'Emerald', partyCount: 0x234, party: 0x238, seen1: 0x988, seen2: 0x3B24, ribbons: 0x31A8, region: 'Hoenn' }
 };
+// SaveBlock1's money: Emerald keeps it XORed with its key (SaveBlock2's 0xAC); Ruby/Sapphire keep it as it is.
+const MONEY = 0x490, MAX_MONEY = 999999;
+// SaveBlock1 runs on across sections 1 to 4, 0xF80 bytes of each.
+const BLOCK = 0xF80;
 // Gen 3's text: letters, digits and a few marks; the rest as '?'.
 function text(bytes) {
   let out = '';
@@ -82,9 +88,33 @@ function blocks(buffer) {
   const sb2 = buffer.subarray(live.at[0], live.at[0] + 0xF80);
   const sb1 = Buffer.concat([1, 2, 3, 4].map(id => buffer.subarray(live.at[id], live.at[id] + 0xF80)));
   const storage = Buffer.concat([5, 6, 7, 8, 9, 10, 11, 12, 13].map(id => buffer.subarray(live.at[id], live.at[id] + SECTION_SIZES[id])));
-  const code = sb2.readUInt32LE(0xAC);
-  const gameId = code === 0 ? 'rs' : code === 1 ? 'frlg' : 'e';
+  const gameId = gameOf(sb1, sb2);
   return { live, sb1, sb2, storage, gameId, game: GAMES[gameId] };
+}
+
+// Which game a save is, from the save alone. SaveBlock2's 0xAC is 1 in FireRed/LeafGreen, Emerald's key (any number)
+// in Emerald, and in Ruby/Sapphire the Battle Tower's record, which is 0 until it holds the player's name. So past 0
+// and 1 the money decides: a reading that gives more than the games allow ($999,999) is the wrong game's. Ruby's
+// record there starts with the name's letters (0xA1 and up), so read as a key it makes any money too much; an
+// Emerald key under 2^20 leaves both readings possible, and then it is Emerald, as before.
+function gameOf(sb1, sb2) {
+  const code = sb2.readUInt32LE(0xAC);
+  if (code === 0) return 'rs';
+  if (code === 1) return 'frlg';
+  const money = sb1.readUInt32LE(MONEY);
+  return money <= MAX_MONEY && ((money ^ code) >>> 0) > MAX_MONEY ? 'rs' : 'e';
+}
+
+// Where a byte of SaveBlock1 ('sb1') or SaveBlock2 ('sb2') of the newer copy is in the save file.
+function place(live, block, offset) {
+  if (block === 'sb2') return live.at[0] + offset;
+  return live.at[1 + Math.floor(offset / BLOCK)] + offset % BLOCK;
+}
+
+// A section's checksum again after its bytes changed, at the file position of one of its bytes.
+function resum(buffer, at) {
+  const base = at - (at % SECTION);
+  buffer.writeUInt16LE(checksum(buffer.subarray(base), SECTION_SIZES[buffer.readUInt16LE(base + 0xFF4)]), base + 0xFF6);
 }
 
 // The PC's boxes: { name, pokemon: [80-byte Pokémon or null] } for each of the 14
@@ -194,4 +224,5 @@ function findSaves(folders, { depth = 3, limit = 4000 } = {}) {
   return found.sort((a, b) => b.modified - a.modified);
 }
 
-module.exports = { SAVE_SIZE, GAMES, ORDERS, parse, read, blocks, boxes, pokemon, linkProblem, searchFolders, findSaves, text };
+module.exports = { SAVE_SIZE, GAMES, ORDERS, parse, read, blocks, boxes, pokemon, linkProblem, searchFolders, findSaves, text,
+  gameOf, place, resum };
