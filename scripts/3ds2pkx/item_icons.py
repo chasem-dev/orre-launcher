@@ -110,14 +110,18 @@ def code_bin(rom):
 
 
 def icon_table(code, icons, items):
-    """Each item's icon number (items long), from code.bin."""
+    """Each item's icon number, from code.bin: up to `items` long, ending sooner where the table does (an entry that
+    isn't (icon, 0) with an icon the ROM has), so a ROM with more names than icon entries loses only those items."""
     start = struct.pack('<2H', icons - 1, 0) + b''.join(struct.pack('<2H', i, 0) for i in range(16))
     at = code.find(start)
     if at < 0 or code.find(start, at + 1) >= 0:
         raise ValueError('The item icon table was not found in the ROM\'s code')
-    table = struct.unpack_from('<%dH' % (items * 2), code, at)[0::2]
-    if max(table) >= icons:
-        raise ValueError('The item icon table names icons the ROM does not have')
+    table = []
+    for item in range(min(items, (len(code) - at) // 4)):
+        icon, zero = struct.unpack_from('<2H', code, at + item * 4)
+        if zero or icon >= icons:
+            break
+        table.append(icon)
     return table
 
 
@@ -173,6 +177,9 @@ def main(rom_path, out):
                 pngs[icon] = gt.encode_png(*decode_icon(icons.get_entry(icon)))
             return pngs[icon]
         files = {}
+        if len(table) < len(names):
+            print('item icons: the icon table ends at item %d of %d; the rest have none' % (len(table), len(names)))
+        names = names[:len(table)]
         for item, name in enumerate(names):
             key = slug(name)
             numbered_machine = key[:2] in ('tm', 'hm', 'tr') and key[2:].isdigit()   # by type instead, below

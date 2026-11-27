@@ -1453,8 +1453,8 @@ async function ensureModelAssets() {
   }
 }
 
-// The bag's and shops' item pictures (the port's host/itemsprites.c): the 3DS ROM's item icons, made once before
-// playing when the ROM is chosen, whatever generations are on. Tried once a ROM; a failure doesn't stop the game,
+// The bag's and shops' item pictures (the port's host/itemsprites.c): the 3DS ROM's item icons, made once before a
+// story starts (play) when the ROM is chosen, whatever generations are on. Tried once a ROM; a failure doesn't stop the game,
 // which then shows no pictures.
 function itemIconsFolder() { return path.join(usumWork(), 'item-icons'); }
 let itemIconsTried = '';
@@ -2048,6 +2048,8 @@ async function play(installation = null, battle = null) {
   broadcast('jukebox-stop');  // the Jukebox's music and the game would share the sound device
   if (jukeboxWindowOpen()) jukeboxWindow.webContents.send('jukebox-stop');
   if (battle) return playGame(installation, battle);
+  // the bag's item pictures, for every story start (Play, co-op, an earlier install); an online battle has no bag
+  await ensureItemIcons();
   storyStarting++;
   try { return await playGame(installation, battle); } finally { if (!--storyStarting) openAdoptLink(); }
 }
@@ -3000,7 +3002,6 @@ async function launchGame(update = config.settings.autoUpdate) {
   if (!binaryReady() || (update && !game.isCurrent(config.repo, currentSource()))) await build();
   if (!hdVisualsReady(config.repo, config.settings)) await installTextures();
   if (update) await ensureModelAssets();
-  await ensureItemIcons();
   await ensureModelTextures();
   return play();
 }

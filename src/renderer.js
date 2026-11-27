@@ -1769,12 +1769,15 @@ function renderUsumBanner(data) {
 }
 function renderUsum(data) {
   const usum = data.usum || {}, usable = usumRomUsable(usum), left = (usum.wanted || 0) - (usum.made || 0);
-  $('usum-row').hidden = !usum.wanted;
+  // the ROM gives the bag and shops their item pictures too, so its row shows with no Gen 5–6 Pokémon on as well
+  $('usum-row').hidden = !usum.wanted && !usum.supported;
   $('usum-note').textContent = usumProgress(data.active)
     || (!usum.supported ? '3DS model converter scripts are missing from this launcher build.'
-      : !usum.rom ? 'Choose your own decrypted Pokémon Ultra Sun, Ultra Moon, Sun or Moon (.3ds) ROM for their models, icons and cries. Until then, each has a Colosseum Pokémon standing in.'
+      : !usum.rom && !usum.wanted ? 'Choose your own decrypted Pokémon Ultra Sun, Ultra Moon, Sun or Moon (.3ds) ROM for item pictures in the bag and shops. With Generation 5 and 6 Pokémon on, it gives them their models, icons and cries too.'
+      : !usum.rom ? 'Choose your own decrypted Pokémon Ultra Sun, Ultra Moon, Sun or Moon (.3ds) ROM for their models, icons and cries, and item pictures in the bag and shops. Until then, each has a Colosseum Pokémon standing in.'
         : !usable ? `${fileName(usum.rom)} can't be used. Choose your ROM again.`
-          : !left ? `${fileName(usum.rom)}: all ${usum.wanted} Pokémon have their models, icons and cries.`
+          : !usum.wanted ? `${fileName(usum.rom)}: the bag and shops show its item pictures.`
+          : !left ? `${fileName(usum.rom)}: all ${usum.wanted} Pokémon have their models, icons and cries, and the bag its item pictures.`
             : usum.outdated ? `${fileName(usum.rom)}: ${usum.made} of ${usum.wanted} made. A fix changed ${usum.outdated === 1 ? '1 Pokémon\'s model' : `${usum.outdated} Pokémon's models`}, made again with your next update.`
               : `${fileName(usum.rom)}: ${usum.made} of ${usum.wanted} made. The rest are made with your next update.`);
   $('usum-note').title = usum.rom || '';
