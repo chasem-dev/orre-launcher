@@ -66,7 +66,8 @@
       "Trainers judge each Generation 4, 5 and 6 move by what it does, in both games: Light of Ruin as a strong attack instead of a healing move, Drill Run as an attack instead of a one-hit KO, Quiver Dance as a stat boost, Heal Pulse as a move they rarely use, while each move keeps its own animation.",
       "X and Y battles: the end of each turn goes effect by effect as it does in X and Y, in both games and online between them: Wish and Future Sight land first, then every Pokémon's Shed Skin, Hydration or Healer and its Leftovers or Black Sludge, then Leech Seed, then poison and burns, with Reflect, Light Screen and the like wearing off after those.",
       "X and Y battles: Infiltrator gets past Safeguard and Mist, Crafty Shield also stops a partner's status moves and ones Protect lets through, such as Transform, Mean Look and Block, Imposter copies the foe across from it in double battles, Payback isn't doubled against a Pokémon that just came in, Liquid Ooze hurts a Pokémon using Dream Eater, Rototiller doesn't fail while a Pokémon is in the air, Mold Breaker gets past Telepathy and the auras, Electro Ball goes by each Pokémon's Speed at the time, and Eviolite and Assault Vest work with Platinum's damage too.",
-      "Fixed the starter picker in XD leaving blank portraits on pages when later generations are enabled."
+      "Fixed the starter picker in XD leaving blank portraits on pages when later generations are enabled.",
+      "Randomizer: a Shadow Pokémon the run turns into another Pokémon is now as easy or hard to snag as that Pokémon, in both games, including Generation 4, 5 and 6 Pokémon. It used to keep the original Shadow Pokémon's snag rate, so a legendary in an early slot was easy to snag and a weak Pokémon in a legendary's slot was hard. Extra Shadow Pokémon from Difficulty follow their own species the same way."
     ]
   },
   "releases": [
