@@ -239,6 +239,12 @@ test('a config saved while quick moves were off by default turns them on once, t
   assert.equal(port.turnOnQuickBattles(off, true).quickStatus, false);
 });
 
+test('a config saved while Shadow aura was on by default turns it off once, then keeps the choice', () => {
+  const on = port.normalizeSettings({ shadowAura: true });
+  assert.equal(port.turnOffShadowAura(on, undefined).shadowAura, false);
+  assert.equal(port.turnOffShadowAura(on, true).shadowAura, true);
+});
+
 test('fast-forward is held at 4x unless chosen, and the default leaves it to the game', () => {
   const env = settings => port.buildEnvironment(port.normalizeSettings(settings), 'disc', '/port');
   const saved = [process.env.COLO_FAST_FORWARD, process.env.COLO_FAST_FORWARD_SPEED];
@@ -326,14 +332,15 @@ test('Split-screen co-op is on unless turned off, with player 2\'s hero, layout 
   }
 });
 
-test('Shadow aura is on unless turned off, in Colosseum and XD', () => {
+test('Shadow aura is off unless turned on, in Colosseum and XD, and the game is told either way', () => {
   const env = (settings, options) => port.buildEnvironment(port.normalizeSettings(settings), 'disc', '/port', options);
   const saved = process.env.COLO_SHADOW_AURA;
   delete process.env.COLO_SHADOW_AURA;
   try {
-    assert.equal(port.normalizeSettings({}).shadowAura, true);
-    assert.equal(env({}).COLO_SHADOW_AURA, undefined, 'unset is on in the game');
-    assert.equal(env({ shadowAura: false }).COLO_SHADOW_AURA, '0');
+    assert.equal(port.normalizeSettings({}).shadowAura, false);
+    assert.equal(env({}).COLO_SHADOW_AURA, '0', 'older Beta games were on when unset');
+    assert.equal(env({ shadowAura: true }).COLO_SHADOW_AURA, '1');
+    assert.equal(env({ shadowAura: true }, { game: 'xd' }).COLO_SHADOW_AURA, '1');
     assert.equal(env({ shadowAura: false }, { game: 'xd' }).COLO_SHADOW_AURA, '0');
   } finally {
     if (saved !== undefined) process.env.COLO_SHADOW_AURA = saved;

@@ -33,7 +33,7 @@ from shared.IR.scene import IRScene                                             
 from shared.IR.skeleton import IRModel, IRBone                                            # noqa: E402
 from shared.IR.geometry import IRMesh, IRUVLayer, IRColorLayer, IRBoneWeights             # noqa: E402
 from shared.IR.material import IRMaterial, IRTextureLayer, IRImage, FragmentBlending      # noqa: E402
-from shared.IR.animation import IRKeyframe, IRBoneTrack, IRBoneAnimationSet, IRMaterialTrack  # noqa: E402
+from shared.IR.animation import IRKeyframe, IRBoneTrack, IRBoneAnimationSet, IRMaterialTrack, IRTextureUVTrack  # noqa: E402
 from shared.IR.enums import (SkinType, ScaleInheritance, Interpolation, CoordType, WrapMode, LayerBlendMode,  # noqa: E402
                              LightmapChannel, ColorSource, LightingModel, OutputBlendEffect, BlendFactor)
 from shared.IR.material import GXTextureFormat                                           # noqa: E402
@@ -171,6 +171,20 @@ PHYSICAL_SLOTS = [8, 9, 10, 11, 12, 0]
 SPECIAL_SLOTS = [12, 13, 14, 15, 8, 0]
 DAMAGE_SLOTS = [16, 17, 0]
 FAINT_SLOTS = [17, 16, 0]
+
+# The 3DS games' face tables, battle motions 19, 20 and 21 (both eyes, then each eye alone): 80 frames that walk the eye
+# sheet's eight expressions, ten frames each, with no joints. The games sample them to set a face, and blink with them
+# from code, so no idle animation has a blink in it. HALF_SHUT and SHUT are the frames of the half-closed and closed eyes.
+FACE_TABLES = (19, 20, 21)
+HALF_SHUT, SHUT = 15, 25
+# Colosseum's three eye animations (pkx header 0x18 falling asleep, 0x1C waking, 0x20 a blink when idle), which XD plays
+# as its part animations too: (frame, face table frame, or None for the eyes as they rest). Falling asleep ends shut, as
+# the game leaves an eye animation's last frame on until the body's next animation.
+EYE_ACTIONS = (
+    ((0, HALF_SHUT), (2, SHUT), (3, SHUT)),
+    ((0, SHUT), (2, HALF_SHUT), (4, None), (5, None)),
+    ((0, HALF_SHUT), (1, SHUT), (3, HALF_SHUT), (4, None), (5, None)),
+)
 
 # Colosseum's 17 animation slots: (anim_type, [candidate index lists])
 SLOTS = [
@@ -380,7 +394,11 @@ def _chandela_fire_mask(gf_mat, tex_dict):
 
 
 def _apply_uv_transform(u, v, tc):
-    """Apply PICA200 / Maya GFTextureCoord (scale, rotation, translation) to (u, v)."""
+    """Apply a GFTextureCoord (scale, rotation, translation) to (u, v) as the 3DS games do (Maya's texture matrix,
+    SPICA's DccMaya): the translation is taken away before the scale, u' = scale * (u - translation), and a rotation
+    turns about the texture's middle (no Pokémon's material has one). An eye or mouth texture is a sheet of
+    expressions, two across (mirrored) and four down, and its translation picks one: added instead, every eye
+    showed the sheet's other column, the narrowed, angry-looking eyes."""
     if not tc:
         return (float(u), float(v))
     sx, sy = tc['scale']
@@ -388,10 +406,10 @@ def _apply_uv_transform(u, v, tc):
     rot = tc['rotation']
     if abs(rot) > 1e-6:
         c, s = math.cos(rot), math.sin(rot)
-        u2 = (u * c - v * s) * sx + tx
-        v2 = (u * s + v * c) * sy + ty
+        u2 = sx * (u * c - v * s) + sx * (0.5 * s - 0.5 * c + 0.5 - tx)
+        v2 = sy * (u * s + v * c) + sy * (-0.5 * s - 0.5 * c + 0.5 - ty)
         return (float(u2), float(v2))
-    return (float(u * sx + tx), float(v * sy + ty))
+    return (float(sx * (u - tx)), float(sy * (v - ty)))
 
 
 # A fire's shell is lit from inside as if this much of its own colour were added (the 3DS shader adds the vertex
@@ -562,13 +580,14 @@ def _fire_core_material(gf_mat, tex_dict, images, max_size, hideable):
     )
 
 
-def _idle_constants(gf_mats, parsed_motions, slot_actions):
-    """The materials with their constant colours as the idle animation's first frame sets them: the 3DS animates
-    some (GFMotion section 5), and what a glow shows at rest is what those make it."""
+def _idle_materials(gf_mats, parsed_motions, slot_actions):
+    """The materials as the idle animation's first frame sets them: the 3DS animates some of their constant colours
+    (GFMotion section 5), and what a glow shows at rest is what those make it; and their texture coordinates
+    (section 3), which pick the face a Pokémon makes at rest from its eye and mouth sheets."""
     idle = slot_actions[0][1][0] if slot_actions and slot_actions[0][1] else None
-    moving = (parsed_motions.get(idle) or {}).get('constants') or {}
+    motion = parsed_motions.get(idle) or {}
     out = dict(gf_mats)
-    for name, channels_of in moving.items():
+    for name, channels_of in (motion.get('constants') or {}).items():
         if name not in out or not out[name].get('constants'):
             continue
         m = dict(out[name])
@@ -577,6 +596,20 @@ def _idle_constants(gf_mats, parsed_motions, slot_actions):
             if 0 <= index < len(ks):
                 ks[index] = tuple(gfmotion.evaluate_track(channels[k], 0, ks[index][k]) for k in range(4))
         m['constants'] = ks
+        out[name] = m
+    for name, channels_of in (motion.get('uv') or {}).items():
+        if name not in out or not out[name].get('tex_coords'):
+            continue
+        m = dict(out[name])
+        units = list(m['tex_coords'])
+        for k, tc in enumerate(units):
+            channels = channels_of.get(tc.get('unit', k))
+            if not channels:
+                continue
+            at = [gfmotion.evaluate_track(channels[c], 0, rest) for c, rest in
+                  enumerate(tc['scale'] + (tc['rotation'],) + tc['translation'])]
+            units[k] = dict(tc, scale=(at[0], at[1]), rotation=at[2], translation=(at[3], at[4]))
+        m['tex_coords'] = units
         out[name] = m
     return out
 
@@ -1163,6 +1196,84 @@ def _sample_animations(gf_skel, order, bone_fields, unique_names, parsed_motions
     return sampled, mat_tracks, lengths
 
 
+def _face_layers(geometry, gf_mats, tex_dict, battle_blobs):
+    """The texture layers the face tables (FACE_TABLES) move, by mesh: [(mesh id, [(layer, offset at a table frame)])].
+    A layer is the eye's or mouth's texture (layer 0) or an iris's mask (layer 1: the eye's open part, which moves with
+    the eye, so the pupil shows where the eye is open), as _material_of makes them. The model's UVs already read each
+    texture where the idle puts it (_idle_materials), so a table frame's place is an offset from there: the HSD texture
+    translation T, read at UV - T, is scale * (translation at that frame - translation at rest), as u' = scale * (u - t)."""
+    tables = []
+    for index in FACE_TABLES:
+        blob = battle_blobs[index] if index < len(battle_blobs) else None
+        motion = gfmotion.read_gfmotion(blob) if blob else None
+        if motion and motion['uv']:
+            tables.append(motion['uv'])
+    if not tables:
+        return []
+    out = []
+    for mesh_name, mat_name, fields in geometry:
+        gf_mat = gf_mats.get(mat_name)
+        if not gf_mat or fields.get('color_layers') or _special_material(gf_mat) is not None:
+            continue
+        tc, tex = _pick_diffuse_texcoord(gf_mat, tex_dict)
+        if not tex:
+            continue
+        units = [tc]
+        if _iris_mask(gf_mat, tex_dict):
+            units.append(gf_mat['tex_coords'][2])
+        layers = []
+        for layer, unit in enumerate(units):
+            channels = next((t[mat_name][unit['unit']] for t in tables
+                             if unit['unit'] in t.get(mat_name, {})), None)
+            if not channels:
+                continue
+
+            def offset(frame, unit=unit, channels=channels):
+                if frame is None:
+                    return (0.0, 0.0)
+                d = [gfmotion.evaluate_track(channels[3 + k], frame, unit['translation'][k]) - unit['translation'][k]
+                     for k in range(2)]
+                return tuple(0.0 if abs(v) < 1e-6 else unit['scale'][k] * v for k, v in enumerate(d))
+            layers.append((layer, offset))
+        if layers:
+            out.append((fields['id'], layers))
+    return out
+
+
+def _uv_keys(values):
+    """Constant keys for (frame, value) pairs: an expression sheet's cells, not a slide between them. Always two or more
+    (HSD writes no track of one key)."""
+    if len(values) == 1:
+        values = values + [(values[0][0] + 1, values[0][1])]
+    return [IRKeyframe(frame=float(f), value=float(v), interpolation=Interpolation.CONSTANT) for f, v in values]
+
+
+def _face_tracks(faces, keys_of, loop):
+    """IRMaterialTracks moving each face layer: keys_of(offset) gives (frame, (u, v)) pairs."""
+    tracks = []
+    for mesh_id, layers in faces:
+        uv = []
+        for layer, offset in layers:
+            keys = keys_of(offset)
+            uv.append(IRTextureUVTrack(texture_index=layer, translation_u=_uv_keys([(f, o[0]) for f, o in keys]),
+                                       translation_v=_uv_keys([(f, o[1]) for f, o in keys])))
+        tracks.append(IRMaterialTrack(material_mesh_name=mesh_id, texture_uv_tracks=uv, loop=loop))
+    return tracks
+
+
+def _merged(tracks):
+    """Material tracks for the same mesh as one (its alpha and its texture slides)."""
+    out = {}
+    for t in tracks:
+        if t.material_mesh_name in out:
+            first = out[t.material_mesh_name]
+            first.alpha = first.alpha or t.alpha
+            first.texture_uv_tracks = first.texture_uv_tracks + t.texture_uv_tracks
+        else:
+            out[t.material_mesh_name] = copy.copy(t)
+    return list(out.values())
+
+
 def build(model_data, tex_blobs, battle_blobs, name, max_texture=256, log=print, reuse=None, portraits=None):
     """Build a Colosseum .pkx from GFModel bytes, texture pack blobs, and battle motion blobs.
 
@@ -1181,7 +1292,7 @@ def build(model_data, tex_blobs, battle_blobs, name, max_texture=256, log=print,
         bone_fields = copy.deepcopy(reuse['bone_fields'])
         parsed_motions = reuse['parsed_motions']
         slot_actions = reuse['slot_actions']
-        gf_mats = _idle_constants(gf_mats, parsed_motions, slot_actions)
+        gf_mats = _idle_materials(gf_mats, parsed_motions, slot_actions)
         used_indices = reuse['used_indices']
         hideable = reuse['hideable']
         geometry = copy.deepcopy(reuse['geometry'])
@@ -1191,7 +1302,7 @@ def build(model_data, tex_blobs, battle_blobs, name, max_texture=256, log=print,
     else:
         order, orig_to_pos, unique_names, bone_fields = _prepare_skeleton(gf['skeleton'])
         parsed_motions, slot_actions, used_indices = _select_battle_motions(battle_blobs)
-        gf_mats = _idle_constants(gf_mats, parsed_motions, slot_actions)
+        gf_mats = _idle_materials(gf_mats, parsed_motions, slot_actions)
         if not used_indices:
             # Create a minimal 2-frame static idle animation if a model has no motions
             parsed_motions = {0: {'frames': 1, 'loop': True, 'bones': {}, 'visibility': {}}}
@@ -1325,21 +1436,44 @@ def build(model_data, tex_blobs, battle_blobs, name, max_texture=256, log=print,
     for m in meshes:
         _undeform_normals(m, bones)
 
+    # Blinking: the game keeps a texture animation on until another names that texture, so every body animation holds
+    # the face where it rests, and the eye animations (EYE_ACTIONS) move it, from the face tables.
+    faces = _face_layers(geometry, gf_mats, tex_dict, battle_blobs)
     animation_sets = []
     for mot_idx in used_indices:
         tracks = sampled.get(mot_idx, [])
-        mtracks = mat_tracks.get(mot_idx, [])
         loop = mot_idx in IDLE_SLOTS
+        last = lengths[mot_idx] - 1
+        held = _face_tracks(faces, lambda offset: [(0, (0.0, 0.0)), (last, (0.0, 0.0))], loop)
         animation_sets.append(IRBoneAnimationSet(
             name='%s_m%02d' % (name, mot_idx),
             tracks=tracks,
             loop=loop,
-            material_tracks=mtracks,
+            material_tracks=_merged(mat_tracks.get(mot_idx, []) + held),
         ))
         log('  m%02d        %3d frames, %d bones animated, %d keys' % (
             mot_idx, lengths[mot_idx], len(tracks),
             sum(len(k) for tr in tracks for ch in (tr.rotation, tr.location, tr.scale) for k in ch),
         ))
+    eye_sets = []
+    for k, action in enumerate(EYE_ACTIONS if faces else ()):
+        last = action[-1][0]
+        # Its joints hold still: the root at its rest, keyed over it, as retail eye animations' joints are (the game plays
+        # only its texture animation; the launcher's Pokédex takes an animation's length from its joints). No alpha
+        # tracks: a mesh it doesn't name keeps what the body's animation gave it.
+        root = bone_fields[0]
+        hold = lambda rest: [[IRKeyframe(frame=float(f), value=float(v), interpolation=Interpolation.LINEAR)
+                              for f in (0, last)] for v in rest]
+        still = IRBoneTrack(bone_name=unique_names[0], bone_index=0, rotation=hold(root['rotation']),
+                            location=hold(root['position']), scale=hold(root['scale']),
+                            rest_local_matrix=root['local_matrix'], rest_rotation=root['rotation'],
+                            rest_position=root['position'], rest_scale=root['scale'], end_frame=float(last))
+        eye_sets.append(len(animation_sets))
+        animation_sets.append(IRBoneAnimationSet(
+            name='%s_%s' % (name, ('sleep', 'wake', 'blink')[k]), tracks=[still], loop=False,
+            material_tracks=_face_tracks(faces, lambda offset: [(f, offset(at)) for f, at in action], False)))
+    if faces:
+        log('  eyes: blink, sleep and wake on %d meshes' % len(faces))
 
     ir_model = IRModel(name=name, bones=bones, meshes=meshes, bone_animations=animation_sets)
     scene = IRScene(models=[ir_model], lights=[], cameras=[], fogs=[])
@@ -1355,7 +1489,7 @@ def build(model_data, tex_blobs, battle_blobs, name, max_texture=256, log=print,
     header.anim_section_count = len(SLOTS)
     header.particle_orientation = -1
     header.head_bone_index = head
-    header.colo_part_anim_refs = [-1, -1, -1]
+    header.colo_part_anim_refs = eye_sets or [-1, -1, -1]   # falling asleep, waking, a blink when idle
     header.colo_unknown_10 = 5
     header.colo_unknown_14 = -1
     header.type_id = 12

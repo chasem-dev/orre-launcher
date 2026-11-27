@@ -304,9 +304,11 @@ function loadConfig() {
     pbrDisc: typeof saved.pbrDisc === 'string' ? saved.pbrDisc : '',
     // The player's decrypted 3DS Pokémon ROM (Ultra Sun/Ultra Moon/Sun/Moon), for Gen 5-6 models (makeUsumModels)
     usumRom: typeof saved.usumRom === 'string' ? saved.usumRom : '',
-    settings: port.turnOnQuickBattles(port.moveToMetal(port.normalizeSettings(saved.settings || {}), saved.movedToMetal), saved.quickBattlesOn),
+    settings: port.turnOffShadowAura(port.turnOnQuickBattles(port.moveToMetal(port.normalizeSettings(saved.settings || {}), saved.movedToMetal), saved.quickBattlesOn), saved.shadowAuraOff),
     // Quick moves and Quick status effects have turned on once for a config saved while they were off by default.
     quickBattlesOn: true,
+    // Shadow aura has turned off once for a config saved while it was on by default.
+    shadowAuraOff: true,
     // Only once Metal is on offer: a Mac still on a Rosetta game moves when its game turns native.
     movedToMetal: Boolean(saved.movedToMetal) || port.platformInfo().renderers[0] === 'metal',
     // The newest launcher version whose changelog the player has been shown.

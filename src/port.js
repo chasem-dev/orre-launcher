@@ -231,9 +231,9 @@ function normalizeSettings(input = {}, platform = process.platform, arch = gameA
     // In battle, the lights behind the Pokémon come from the front and all are 15% brighter (host/battlelight.c). On
     // unless turned off.
     battleLighting: input.battleLighting !== false,
-    // A Shadow Pokémon's black aura stays on it all battle once you know it's one (host/shadowaura.c), in both games. On
-    // unless turned off.
-    shadowAura: input.shadowAura !== false,
+    // A Shadow Pokémon's black aura stays on it all battle once you know it's one (host/shadowaura.c), in both games. Off
+    // unless turned on.
+    shadowAura: Boolean(input.shadowAura),
     // XD: a Poké Spot draws from every Pokémon a player could find in the wild, not only its own three. Off unless chosen.
     pokeSpotPool: input.pokeSpotPool !== false,
     // A New Game asks who to play as (Wes, or a Game Boy Advance hero Mt. Battle shows) before the name, and the save
@@ -321,6 +321,12 @@ function moveToMetal(settings, moved, platform = process.platform, arch = gameAr
 // They turn on once when they became defaults; after that the player's choice stays.
 function turnOnQuickBattles(settings, done) {
   return done ? settings : { ...settings, quickMoves: true, quickStatus: true };
+}
+
+// Shadow aura was on by default for its first Beta builds, so a config saved then says true without the player having
+// chosen it. It turns off once when it became off by default; after that the player's choice stays.
+function turnOffShadowAura(settings, done) {
+  return done ? settings : { ...settings, shadowAura: false };
 }
 
 function texturePackDirectory(root) { return path.join(root, 'mods', 'textures'); }
@@ -511,8 +517,8 @@ function buildEnvironment(settings, disc, root, { customTextures = null, pbrText
   // Unset is on in the game: the Trade Center opens before the story's end.
   if (settings.gbaTradeAnytime === false) env.COLO_GBA_TRADE_ANYTIME = '0';
   if (settings.battleLighting === false) env.COLO_BATTLE_LIGHT = '0';
-  // Unset is on in the game.
-  if (settings.shadowAura === false) env.COLO_SHADOW_AURA = '0';
+  // Said either way: unset is off in the game, but was on in the games Beta built before it changed.
+  env.COLO_SHADOW_AURA = settings.shadowAura ? '1' : '0';
   if (settings.pokeSpotPool === false) env.COLO_POKESPOT_POOL = '0';
   if (settings.chooseHero === false) env.COLO_CHOOSE_HERO = '0';
   env.COLO_COOP = settings.coop === false ? '0' : '1';
@@ -853,7 +859,7 @@ function gameRuntimeFolders(environment = process.env) {
   return [path.join(environment.MSYS2_ROOT || 'C:\\msys64', 'mingw64', 'bin')];
 }
 
-module.exports = { PORT_URL, TEXTURE_PACK, PBR_TEXTURE_PACK, USUM_TEXTURE_PACK, texturePack, gameArch, platformInfo, dependencyPaths, isPort, placeMainDol, validateRom, normalizeSettings, moveToMetal, turnOnQuickBattles,
+module.exports = { PORT_URL, TEXTURE_PACK, PBR_TEXTURE_PACK, USUM_TEXTURE_PACK, texturePack, gameArch, platformInfo, dependencyPaths, isPort, placeMainDol, validateRom, normalizeSettings, moveToMetal, turnOnQuickBattles, turnOffShadowAura,
   texturePackDirectory, texturePackInstalled, hdVisualsInstalled, dropLeftOutTextures, customTextureDirectory, customTexturesPresent, texturePackFolders,
   pbrTextureDirectory, pbrTexturesInstalled, pbrTextureFolder, dropLeftOutPbrTextures, pbrTextureCommand,
   buildEnvironment, binaryPath, longPathProblem, pathCharacterProblem, nonAsciiPathProblem, playableInstall, useLauncherScripts, launcherScript,

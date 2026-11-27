@@ -1,4 +1,5 @@
-"""Game Freak 3DS GFMotion (0x00060000) parser: skeletal, material constant colour, and visibility animations."""
+"""Game Freak 3DS GFMotion (0x00060000) parser: skeletal, texture coordinate, material constant colour, and visibility
+animations."""
 import math
 import struct
 
@@ -149,6 +150,7 @@ def read_gfmotion(data):
     bones = {}       # bone_name -> {'is_axis_angle': bool, 'tracks': [9 keyframe lists]}
     visibility = {}  # mesh_name -> list[bool] per frame
     constants = {}   # material_name -> {constant index: [R, G, B, A keyframe lists]}
+    uv = {}          # material_name -> {texture unit: [scale U, scale V, rotation, translation U, V keyframe lists]}
 
     # Pass 1: Section 0 metadata (needed for frames_count)
     for sid, slen, saddr in secs:
@@ -184,6 +186,34 @@ def read_gfmotion(data):
                     tracks.append(kfs)
                 bones[bn] = {'is_axis_angle': is_axis_angle, 'tracks': tracks}
                 bp = end_b
+        elif sid == 3 and saddr + 8 <= len(data):
+            # Texture coordinates (SPICA GFMaterialMot): materials (with how many of their texture units move), names,
+            # then for each unit its index, its five channels' keyframe modes (3 bits each) and their keys. This is
+            # how a face changes: its eye and mouth textures are sheets of expressions, and these slide to one.
+            mat_cnt, names_len = struct.unpack_from('<II', data, saddr)
+            counts = struct.unpack_from('<%dI' % mat_cnt, data, saddr + 8)
+            np = saddr + 8 + 4 * mat_cnt
+            mat_names = []
+            for _ in range(mat_cnt):
+                mn, np = _read_len_str(data, np)
+                mat_names.append(mn)
+            cp = saddr + 8 + 4 * mat_cnt + names_len
+            for mn, count in zip(mat_names, counts):
+                for _ in range(count):
+                    if cp + 12 > len(data):
+                        break
+                    unit, flags, length = struct.unpack_from('<III', data, cp)
+                    cp += 12
+                    tp, channels = cp, []
+                    for ch in range(5):
+                        mode = (flags >> (ch * 3)) & 7
+                        if mode in (1, 2):   # a channel held at 0 or at 1, with no keys
+                            channels.append([(0, float(mode - 1), 0.0)])
+                        else:
+                            kfs, tp = _decode_keyframe_list(data, tp, mode, frames_count)
+                            channels.append(kfs)
+                    uv.setdefault(mn, {})[unit] = channels
+                    cp += length
         elif sid == 5 and saddr + 8 <= len(data):
             # Material constant colours: materials (with how many of their constants move), names, then for each
             # constant its index, its four channels' keyframe modes (R, G, B, A, 3 bits each) and their keys.
@@ -239,4 +269,5 @@ def read_gfmotion(data):
         'bones': bones,
         'visibility': visibility,
         'constants': constants,
+        'uv': uv,
     }
