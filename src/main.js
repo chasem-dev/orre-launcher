@@ -1455,6 +1455,25 @@ async function ensureModelAssets() {
   }
 }
 
+// The bag's and shops' item pictures (the port's host/itemsprites.c): the 3DS ROM's item icons, made once before a
+// story starts (play) when the ROM is chosen, whatever generations are on. Tried once a ROM; a failure doesn't stop the game,
+// which then shows no pictures.
+function itemIconsFolder() { return path.join(usumWork(), 'item-icons'); }
+let itemIconsTried = '';
+async function ensureItemIcons() {
+  if (!supports('pbrAssets') || port.itemIconsReady(itemIconsFolder())) return;
+  const rom = config.usumRom;
+  if (!rom || !fs.existsSync(rom) || usumRomProblem() || itemIconsTried === rom || !fs.existsSync(port.itemIconsScript())) return;
+  itemIconsTried = rom;
+  try {
+    await ensureBuildTools();
+    const cmd = port.itemIconsCommand(rom, itemIconsFolder(), process.platform, toolEnv());
+    await launch(cmd.command, cmd.args, { cwd: cmd.cwd, env: cmd.env }, 'Make item pictures');
+    if (!port.itemIconsReady(itemIconsFolder())) throw new Error('the converter finished without them');
+    log('Item pictures are ready from your 3DS Pokémon ROM: the bag and shops show them in your next game.');
+  } catch (error) { log(`Item pictures couldn't be made from your 3DS Pokémon ROM (${error.message}); the bag shows none.`); }
+}
+
 // Writes the game's file of Pokémon (pokemonPacks.compile's contents) no bigger than the game reads
 // (port.packsFileLimit): a game handed a bigger one stops rather than play without it, which would have every saved
 // Pokémon that knows a later generation's move forget it. Replace all models' models go first, as they change only how
@@ -2031,6 +2050,8 @@ async function play(installation = null, battle = null) {
   broadcast('jukebox-stop');  // the Jukebox's music and the game would share the sound device
   if (jukeboxWindowOpen()) jukeboxWindow.webContents.send('jukebox-stop');
   if (battle) return playGame(installation, battle);
+  // the bag's item pictures, for every story start (Play, co-op, an earlier install); an online battle has no bag
+  await ensureItemIcons();
   storyStarting++;
   try { return await playGame(installation, battle); } finally { if (!--storyStarting) openAdoptLink(); }
 }
@@ -2094,7 +2115,9 @@ async function playGame(installation = null, battle = null) {
     // online co-op (src/together.js): hosting or joining the story, for this play only
     ...(!battle && playingTogether ? together.environment(playingTogether) : {}),
     ...(config.settings.discordPresence && supports('discordPresence') ? { COLO_PRESENCE: '1' } : {}),
-    ...(packsFile ? { COLO_POKEMON_PACKS: packsFile } : {}) };
+    ...(packsFile ? { COLO_POKEMON_PACKS: packsFile } : {}),
+    // the bag's item pictures (ensureItemIcons); none made: none looked for
+    COLO_ITEM_SPRITES: supports('pbrAssets') && port.itemIconsReady(itemIconsFolder()) ? itemIconsFolder() : '0' };
   // an online battle's players in their colours: the HD images made for them, read before the HD pack's
   if (battle?.looks?.length && playEnv.SMS_TEXTURE_PACKS && playEnv.SMS_TEXTURE_PACKS !== '0') playEnv.SMS_TEXTURE_PACKS = [...battle.looks, playEnv.SMS_TEXTURE_PACKS].join(';');
   // the story's heroes in their colours: their repainted textures, read before any other pack's (with no HD pack too)

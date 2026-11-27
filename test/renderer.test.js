@@ -477,8 +477,12 @@ test('with a 3DS ROM chosen before, turning on Generation 5 and 6 Pokémon makes
   assert.equal(ui.elements.get('usum-offer').open, false);
   assert.ok(ui.calls.includes('makeUsumModels'));
   assert.equal(ui.elements.get('usum-row').hidden, false);
-  const off = await renderer(gen6State({ wanted: 0 }));
-  assert.equal(off.elements.get('usum-row').hidden, true, 'the ROM row shows only with the generation on');
+  // with no Gen 5–6 Pokémon on, the ROM still gives the bag its item pictures, so its row stays
+  const off = await renderer(gen6State({ wanted: 0, rom: '/games/UltraMoon.3ds', romFound: true }));
+  assert.equal(off.elements.get('usum-row').hidden, false, 'the ROM row shows for item pictures with the generation off');
+  assert.equal(off.elements.get('usum-note').textContent, 'UltraMoon.3ds: the bag and shops show its item pictures.');
+  const none = await renderer(gen6State({ wanted: 0 }));
+  assert.match(none.elements.get('usum-note').textContent, /^Choose your own .* for item pictures in the bag and shops\./);
 });
 
 async function turnOnGen6(ui) {
