@@ -12,7 +12,7 @@ const fairyLearnsets = require('../src/fairy-learnsets');
 
 const key = text => String(text).toLowerCase();
 const MOVE = { tackle: 33, gust: 16, hyperVoice: 304, sweetKiss: 186, slam: 21, mistBall: 296, swift: 129, charm: 204,
-  auroraBeam: 62, growl: 45, moonlight: 236, quickAttack: 98 };
+  auroraBeam: 62, growl: 45, moonlight: 236, quickAttack: 98, sweetScent: 230 };
 const FAIRY_MOVE = { disarmingVoice: 577, drainingKiss: 580, playRough: 586, fairyWind: 587, moonblast: 588, dazzlingGleam: 608, babyDollEyes: 611 };
 
 // What readGameTables reads, made up: the moves the Fairy moves play as, each row's effect its number, and three
@@ -20,7 +20,7 @@ const FAIRY_MOVE = { disarmingVoice: 577, drainingKiss: 580, playRough: 586, fai
 function tables() {
   const names = { [MOVE.tackle]: 'Tackle', [MOVE.gust]: 'Gust', [MOVE.hyperVoice]: 'Hyper Voice', [MOVE.sweetKiss]: 'Sweet Kiss',
     [MOVE.slam]: 'Slam', [MOVE.mistBall]: 'Mist Ball', [MOVE.swift]: 'Swift', [MOVE.charm]: 'Charm', [MOVE.auroraBeam]: 'Aurora Beam',
-    [MOVE.growl]: 'Growl', [MOVE.moonlight]: 'Moonlight', [MOVE.quickAttack]: 'Quick Attack' };
+    [MOVE.growl]: 'Growl', [MOVE.moonlight]: 'Moonlight', [MOVE.quickAttack]: 'Quick Attack', [MOVE.sweetScent]: 'Sweet Scent' };
   const moveRows = Array.from({ length: 358 }, (_, id) => {
     const row = Buffer.alloc(0x38);
     row.writeUInt16BE(id, 0x1a);

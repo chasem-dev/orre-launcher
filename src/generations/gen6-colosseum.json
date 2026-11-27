@@ -32,7 +32,7 @@
     },
     "Dazzling Gleam": {
       "name": "DAZZLINGLEAM",
-      "as": "Swift",
+      "as": "Sweet Scent",
       "effectAs": "Tackle",
       "exact": true
     },
@@ -78,7 +78,7 @@
       "exact": true
     },
     "Autotomize": {
-      "as": "Agility",
+      "as": "Iron Defense",
       "effect": 307,
       "exact": true
     },
@@ -123,7 +123,7 @@
       "exact": true
     },
     "Heavy Slam": {
-      "as": "Body Slam",
+      "as": "Meteor Mash",
       "effect": 316,
       "exact": true
     },
@@ -148,7 +148,7 @@
       "exact": true
     },
     "Coil": {
-      "as": "Wrap",
+      "as": "Acid Armor",
       "effect": 321,
       "exact": true
     },
@@ -278,7 +278,7 @@
       "exact": true
     },
     "Final Gambit": {
-      "as": "Mega Punch",
+      "as": "DynamicPunch",
       "effect": 347,
       "exact": true
     },
@@ -328,7 +328,7 @@
       "exact": true
     },
     "Dragon Tail": {
-      "as": "Iron Tail",
+      "as": "Dragon Claw",
       "effect": 357,
       "exact": true
     },
@@ -353,22 +353,22 @@
       "exact": true
     },
     "Dual Chop": {
-      "as": "Double Kick",
+      "as": "Dragon Claw",
       "effect": 362,
       "exact": true
     },
     "Heart Stamp": {
-      "as": "Stomp",
+      "as": "Extrasensory",
       "effect": 363,
       "exact": true
     },
     "Horn Leech": {
-      "as": "Horn Attack",
+      "as": "Giga Drain",
       "effect": 364,
       "exact": true
     },
     "Sacred Sword": {
-      "as": "Slash",
+      "as": "Brick Break",
       "effect": 365,
       "exact": true
     },
@@ -423,7 +423,7 @@
       "exact": true
     },
     "Gear Grind": {
-      "as": "Double Kick",
+      "as": "Metal Claw",
       "effect": 376,
       "exact": true
     },
@@ -433,7 +433,7 @@
       "exact": true
     },
     "Techno Blast": {
-      "as": "Zap Cannon",
+      "as": "Hyper Beam",
       "effect": 378,
       "exact": true
     },
@@ -443,7 +443,7 @@
       "exact": true
     },
     "Secret Sword": {
-      "as": "Slash",
+      "as": "Brick Break",
       "effect": 380,
       "exact": true
     },
@@ -740,13 +740,13 @@
       "exact": true
     },
     "Infestation": {
-      "as": "Whirlpool",
+      "as": "Spider Web",
       "effect": 443,
       "exact": true
     },
     "Power-Up Punch": {
       "name": "POWERUPPUNCH",
-      "as": "Mega Punch",
+      "as": "Mach Punch",
       "effect": 444,
       "exact": true
     },
@@ -758,7 +758,7 @@
     },
     "Thousand Arrows": {
       "name": "THOUS.ARROWS",
-      "as": "Rock Slide",
+      "as": "Magnitude",
       "effect": 446,
       "exact": true
     },

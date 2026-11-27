@@ -1337,3 +1337,52 @@ test('changing battle rules, generation Pokémon, Fairy type, Customize rules or
   await ui.refresh();
   assert.equal(pokedexResets, 4, '3DS asset conversion progress resets Pokédex');
 });
+
+test('applying or reverting randomizer settings on the active save opens the confirmation modal and refreshes on confirm', async () => {
+  const data = {
+    ...state(),
+    randomizerSave: { exists: true, run: null },
+    randomizerApply: { revert: false, from: 'Normal game', to: 'Seed C0FFEE11 · Starters, Shadow Pokémon · Gen 1, Gen 2, Gen 3, Gen 4, Gen 5, Gen 6' }
+  };
+  data.config.settings = port.normalizeSettings({ randomizer: true, randomizerSeed: 'C0FFEE11' });
+  const ui = await renderer(data);
+  assert.equal(ui.elements.get('randomizer-apply').hidden, false);
+  assert.equal(ui.elements.get('randomizer-apply').textContent, 'Apply to current save');
+
+  let applied = 0;
+  ui.window.colo.randomizerApplyToSave = async () => {
+    applied++;
+    return {
+      ...data,
+      randomizerSave: { exists: true, run: { seed: 'C0FFEE11', options: 531, generations: 63 } },
+      randomizerApply: null,
+      randomizerApplied: { revert: false, frozenCount: 2, backup: true }
+    };
+  };
+
+  await ui.click('randomizer-apply');
+  assert.equal(ui.elements.get('randomizer-apply-confirm').open, true);
+  assert.equal(ui.elements.get('randomizer-apply-before').textContent, 'Normal game');
+  assert.match(ui.elements.get('randomizer-apply-after').textContent, /Seed C0FFEE11/);
+  assert.match(ui.elements.get('randomizer-apply-lead').textContent, /Snag List/);
+
+  await ui.click('randomizer-apply-go');
+  assert.equal(applied, 1);
+  assert.equal(ui.elements.get('randomizer-apply-confirm').open, false);
+  assert.equal(ui.elements.get('randomizer-apply').hidden, true);
+  assert.equal(ui.elements.get('randomizer-spoilers').hidden, false);
+
+  // XD revert shows Shadow Monitor wording and Remove from save label
+  const xdData = {
+    ...state(),
+    currentGame: games.summary('xd'),
+    randomizerSave: { exists: true, run: { seed: 'DEADBEEF', options: 19, generations: 15 } },
+    randomizerApply: { revert: true, from: 'Seed DEADBEEF · Starter, Shadow Pokémon · Gen 1, Gen 2, Gen 3, Gen 4', to: 'Normal game' }
+  };
+  const xdUi = await renderer(xdData);
+  assert.equal(xdUi.elements.get('randomizer-apply').textContent, 'Remove from save');
+  await xdUi.click('randomizer-apply');
+  assert.equal(xdUi.elements.get('randomizer-apply-title').textContent, 'Remove randomizer from your save?');
+  assert.match(xdUi.elements.get('randomizer-apply-lead').textContent, /Shadow Monitor/);
+  assert.equal(xdUi.elements.get('randomizer-apply-go').textContent, 'Remove from save');
+});

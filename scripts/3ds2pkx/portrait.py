@@ -105,6 +105,14 @@ def _draw(parts, size, window):
         if part.get('tint'):
             sample = _tinted(sample)
             uvs = [tuple(t) + tuple(c[:3]) for t, c in zip(uvs, part['tint'])]
+        mc = part.get('mat_color')
+        ma = part.get('mat_alpha', 1.0)
+        if (mc and mc != (1.0, 1.0, 1.0)) or ma < 0.999:
+            mr, mg, mb = mc or (1.0, 1.0, 1.0)
+            prev = sample
+            sample = lambda *args, f=prev, r0=mr, g0=mg, b0=mb, a0=ma: (
+                lambda r, g, b, a: (int(r * r0), int(g * g0), int(b * b0), int(a * a0))
+            )(*f(*args))
         pts = [_view(v) for v in part['vertices']]
         scr = [((p[0] - x0) * scale, (y0 + side - p[1]) * scale, p[2]) for p in pts]
         nrm = [_view(n) for n in part['normals']]

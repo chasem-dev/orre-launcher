@@ -326,6 +326,20 @@ test('Split-screen co-op is on unless turned off, with player 2\'s hero, layout 
   }
 });
 
+test('Shadow aura is on unless turned off, in Colosseum and XD', () => {
+  const env = (settings, options) => port.buildEnvironment(port.normalizeSettings(settings), 'disc', '/port', options);
+  const saved = process.env.COLO_SHADOW_AURA;
+  delete process.env.COLO_SHADOW_AURA;
+  try {
+    assert.equal(port.normalizeSettings({}).shadowAura, true);
+    assert.equal(env({}).COLO_SHADOW_AURA, undefined, 'unset is on in the game');
+    assert.equal(env({ shadowAura: false }).COLO_SHADOW_AURA, '0');
+    assert.equal(env({ shadowAura: false }, { game: 'xd' }).COLO_SHADOW_AURA, '0');
+  } finally {
+    if (saved !== undefined) process.env.COLO_SHADOW_AURA = saved;
+  }
+});
+
 test('Battle lighting is on unless turned off, in Colosseum and XD', () => {
   const env = (settings, options) => port.buildEnvironment(port.normalizeSettings(settings), 'disc', '/port', options);
   const saved = process.env.COLO_BATTLE_LIGHT;

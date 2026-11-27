@@ -207,17 +207,21 @@ function newMoves(tables, data) {
     if (!template || template >= FIRST_NEW_MOVE) throw new Error(`generation ${data.generation}: ${move.name} plays as "${how.as}", which Colosseum hasn't`);
     // A damaging move whose power is worked out as it's used has 1, as Pokémon Platinum has it.
     const power = how.power ?? move.power, from = tables.moveRows[template];
-    // The template's chance, where it plays the same effect as Platinum has the move play (Magma Storm as Fire Spin)
-    const sameEffect = how.effect === undefined && data.moves[template]?.effect === move.effect;
-    const row = writeMove(Buffer.from(from), move, learned, tables, { power, chance: chanceFor(move, from, sameEffect) });
-    // The effect the game plays: the template's, or one of the port's own (host/gen4.c's EFFECT_*), or another of the game's.
-    // (or another move's, as fairy-colosseum.json has the Fairy moves: Disarming Voice never misses, as Swift)
+    // The effect the game plays: the template's, or one of the port's own (host/gen4.c's EFFECT_*), or another of the game's
+    // (effectAs: e.g. Leaf Storm plays Petal Dance's animation with Overheat's effect).
+    let effectId = template;
     if (how.effectAs) {
-      const effectFrom = tables.moves.get(key(how.effectAs));
-      if (!effectFrom || effectFrom >= FIRST_NEW_MOVE) throw new Error(`generation ${data.generation}: ${move.name} plays the effect of "${how.effectAs}", which Colosseum hasn't`);
-      row.writeUInt16BE(tables.moveRows[effectFrom].readUInt16BE(MV.effect), MV.effect);
+      effectId = tables.moves.get(key(how.effectAs));
+      if (!effectId || effectId >= FIRST_NEW_MOVE) throw new Error(`generation ${data.generation}: ${move.name} plays the effect of "${how.effectAs}", which Colosseum hasn't`);
+    }
+    const effectRow = tables.moveRows[effectId];
+    // The template's chance, where it plays the same effect as Platinum has the move play (Magma Storm as Fire Spin, Leaf Storm effectAs Overheat)
+    const sameEffect = how.effect === undefined && data.moves[effectId]?.effect === move.effect;
+    const row = writeMove(Buffer.from(from), move, learned, tables, { power, chance: chanceFor(move, effectRow, sameEffect) });
+    if (how.effectAs) {
+      row.writeUInt16BE(effectRow.readUInt16BE(MV.effect), MV.effect);
       // a move with no added effect of its own keeps the chance of the row whose effect it plays (Growl's for Baby-Doll Eyes)
-      if (!move.effectChance) row[MV.chance] = tables.moveRows[effectFrom][MV.chance];
+      if (!move.effectChance && !sameEffect) row[MV.chance] = effectRow[MV.chance];
     }
     if (how.effect !== undefined) row.writeUInt16BE(how.effect, MV.effect);
     // Who it's aimed at, where no move of Colosseum's has its range (Acupressure: the user or its partner).
@@ -358,7 +362,26 @@ const intoOf = number => number > 386 ? `generation:${number}` : number;
 // the port adds knowing a move, a Pokémon in the party, and a level for one gender (host/evolutions.c). The game keeps
 // no time of day, so an evolution by friendship in the day or at night is by friendship; an item or a place the game
 // hasn't is a level, or no evolution (gen<N>-colosseum.json: Eevee's mossy and icy rocks).
-function evolutionOf(data, evolution, usable) {
+// Highest level-up evolution that produces `number` (0 when none), so a fallback item/place level never sits at or
+// below the level a Pokémon itself evolved at (Lampent evolves from Litwick at 41 -> Chandelure 50; Doublade 35 -> Aegislash 45).
+function preEvolutionLevel(data, number) {
+  if (!number) return 0;
+  let max = 0;
+  for (const entry of Object.values(data.species)) {
+    for (const ev of entry.evolutions || []) {
+      if (ev.into === number && ev.level && ev.level > max) max = ev.level;
+    }
+  }
+  return max;
+}
+
+function fallbackLevel(data, fromNumber, level) {
+  if (!level) return 0;
+  const pre = preEvolutionLevel(data, fromNumber);
+  return pre && level <= pre ? Math.ceil((pre + 6) / 5) * 5 : level;
+}
+
+function evolutionOf(data, evolution, usable, fromNumber = 0) {
   const into = intoOf(evolution.into), gender = evolution.gender ? { gender: evolution.gender } : {};
   if (evolution.other) return null;   // the third generation's, which the game's own Pokémon have as it has them
   if (evolution.level) return { into, level: evolution.level, ...gender, ...(evolution.partyType ? { partyType: evolution.partyType } : {}) };
@@ -372,13 +395,15 @@ function evolutionOf(data, evolution, usable) {
   if (item) {
     const level = data.colosseum.evolutionItems[item];
     if (level === undefined) return evolution.item ? { into, item } : evolution.heldItem ? null : { into, trade: item };
-    return level ? { into, level, ...gender } : null;
+    const adjusted = fallbackLevel(data, fromNumber, level);
+    return adjusted ? { into, level: adjusted, ...gender } : null;
   }
   if (evolution.place) {
     // a level, or (Eevee's Moss Rock and Ice Rock) an item the game has to use or hold
     const way = data.colosseum.evolutionPlaces?.[evolution.place];
     if (way && typeof way === 'object') return way.item ? { into, item: way.item } : way.heldItem ? { into, heldItem: way.heldItem } : null;
-    return way ? { into, level: way } : null;
+    const adjusted = fallbackLevel(data, fromNumber, way);
+    return adjusted ? { into, level: adjusted } : null;
   }
   return null;
 }
@@ -398,7 +423,7 @@ function ownSpecies(tables, data, moves, evolveData = data) {
     if (!entry || !each.row) continue;
     const evolveFrom = evolveData?.species[each.national];
     const evolutions = (evolveFrom?.evolutions || []).filter(evolution => evolution.into > 386 || evolution.trade === 'Prism Scale')
-      .map(evolution => evolutionOf(evolveData, evolution, usable)).filter(Boolean);
+      .map(evolution => evolutionOf(evolveData, evolution, usable, each.national)).filter(Boolean);
     out.push({ id: each.id, national: each.national, levelUp: levelUpMoves(entry, usable), evolutions });
   }
   return out;
@@ -434,7 +459,7 @@ function speciesSpec(tables, data, number, moves, ownAbilities, learnData = null
   }
   if (!abilities.length) abilities.push(...entry.abilities.map(name => data.colosseum.abilities[name]).filter(Boolean));
   const moveList = levelUpMoves(learns, usable);
-  const evolutions = entry.evolutions.map(evolution => evolutionOf(data, evolution, usable)).filter(Boolean);
+  const evolutions = entry.evolutions.map(evolution => evolutionOf(data, evolution, usable, number)).filter(Boolean);
   const types = [...new Set(entry.types)];
   return {
     base: (STAND_INS[types[0]] || STAND_INS.Normal)[stageOf(data, number) - 1],

@@ -8,6 +8,11 @@ const os = require('node:os');
 const path = require('node:path');
 const randomizer = require('../src/randomizer');
 const port = require('../src/port');
+const gciSave = require('../src/gci-save');
+const xdSave = require('../src/xd-save');
+const saves = require('../src/saves');
+const savePokemon = require('../src/save-pokemon');
+const shadowEntries = require('../src/shadow-entries');
 
 const on = (extra = {}) => randomizer.normalize({ randomizer: true, randomizerSeed: 'C0FFEE11', ...extra });
 
@@ -261,4 +266,194 @@ test('spoilers list extra Shadow Pokémon when the game logs them', () => {
     { national: 264, name: 'Linoone' }, { national: 212, name: 'Scizor' }, { national: 161, name: 'Sentret' }];
   const text = randomizer.spoilerText(raw, species, [], 'xd');
   assert.match(text, /Shadow Pokémon\n  Teddiursa is now Groudon\n\nExtra Shadow Pokémon\n  Linoone is now Scizor\n  Sentret\n/);
+});
+
+test('runsEqual ignores internal spread bit while catching seed, option and generation changes', () => {
+  assert.equal(randomizer.runsEqual(null, null), true);
+  assert.equal(randomizer.runsEqual(null, { seed: 'C0FFEE11', options: 19, generations: 7 }), false);
+  assert.equal(randomizer.runsEqual(
+    { seed: 'C0FFEE11', options: 19, generations: 7 },
+    { seed: 'C0FFEE11', options: 19 | randomizer.SPREAD, generations: 7 }
+  ), true);
+  assert.equal(randomizer.runsEqual(
+    { seed: 'C0FFEE11', options: 19, generations: 15 },
+    { seed: 'C0FFEE11', options: 19, generations: 63 }
+  ), false);
+  assert.equal(randomizer.runsEqual(
+    { seed: 'C0FFEE11', options: 19, generations: 7 },
+    { seed: 'BADC0DE5', options: 19, generations: 7 }
+  ), false);
+});
+
+test('spoilerMatches verifies seed, options and generations so updating a run invalidates old spoilers', () => {
+  const raw = 'seed C0FFEE11 options 19 generations 15\nshadow 1 296 416\n';
+  assert.equal(randomizer.spoilerMatches(raw, { seed: 'C0FFEE11', options: 19, generations: 15 }), true);
+  assert.equal(randomizer.spoilerMatches(raw, { seed: 'C0FFEE11', options: 19, generations: 63 }), false);
+  assert.equal(randomizer.spoilerMatches(raw, { seed: 'C0FFEE11', options: 23, generations: 15 }), false);
+  assert.equal(randomizer.spoilerMatches('seed C0FFEE11\n', { seed: 'C0FFEE11', options: 19, generations: 15 }), true);
+  assert.equal(randomizer.spoilerMatches(null, { seed: 'C0FFEE11', options: 19, generations: 15 }), false);
+});
+
+test('writeStamp round-trips Gen 5/6-only runs and clears cleanly on null', () => {
+  const plain = Buffer.alloc(0x1df80 + 8 + 0x20);
+  const at = 0x1df80 + 8;
+  randomizer.writeStamp(plain, at, { seed: '1234ABCD', options: 531, generations: 48 });
+  assert.deepEqual(randomizer.runOf(plain, at), { seed: '1234ABCD', options: 531, generations: 48 });
+  randomizer.writeStamp(plain, at, null);
+  assert.equal(randomizer.runOf(plain, at), null);
+  assert.equal(plain.subarray(at, at + 0x20).every(byte => byte === 0), true);
+});
+
+test('runSummary formats Normal game and active runs for Colosseum and XD', () => {
+  assert.equal(randomizer.runSummary(null), 'Normal game');
+  assert.equal(randomizer.runSummary({ seed: 'C0FFEE11', options: 531, generations: 63 }, 'colosseum'),
+    'Seed C0FFEE11 · Starters, Shadow Pokémon, Similar strength · Gen 1, Gen 2, Gen 3, Gen 4, Gen 5, Gen 6');
+  assert.equal(randomizer.runSummary({ seed: 'C0FFEE11', options: 1, generations: 48 }, 'xd'),
+    'Seed C0FFEE11 · Starter · Gen 5, Gen 6');
+});
+
+function colosseumPlain(count, { stampBytes = null, snaggedShadows = [], party = [] } = {}) {
+  const plain = Buffer.alloc(SLOT);
+  plain[0] = plain[1] = 1;
+  plain.writeInt32BE(count, 4);
+  if (stampBytes) stampBytes.copy(plain, 8 + 0x1df80);
+  for (const { id, discSpecies } of snaggedShadows) {
+    const rec = 0x1b4ac + 0x18 * id;
+    plain.writeUInt16BE(discSpecies, rec + 0x10);
+    shadowEntries.setColosseumFlag(plain, 'met', id, true);
+    shadowEntries.setColosseumFlag(plain, 'snagged', id, true);
+  }
+  party.forEach(({ species, shadowId = 0 }, i) => {
+    const at = savePokemon.COLOSSEUM.party + i * savePokemon.COLOSSEUM.size;
+    plain.writeUInt16BE(species, at);
+    plain.writeUInt16BE(shadowId, at + savePokemon.COLOSSEUM.at.shadow);
+  });
+  return plain;
+}
+
+test('applyRunToSave updates Colosseum saves (normal -> randomized -> gen 5+6 -> revert), backs up, and freezes snagged Snag List species', () => {
+  const backups = tempFolder();
+  // Normal save: snagged Makuhita (Shadow id 1, disc species 296), did not snag id 2 (disc species 153).
+  const p1 = colosseumPlain(1, { snaggedShadows: [{ id: 1, discSpecies: 296 }], party: [{ species: 296, shadowId: 1 }] });
+  const p2 = colosseumPlain(2, { snaggedShadows: [{ id: 1, discSpecies: 296 }], party: [{ species: 296, shadowId: 1 }] });
+  p2.writeUInt16BE(153, 0x1b4ac + 0x18 * 2 + 0x10);
+  const folder = card(gciSave.scramble(p1), gciSave.scramble(p2), slot(0));
+
+  // 1) Normal -> Randomized (Gen 1-4)
+  const gen4Run = { seed: 'C0FFEE11', options: 19, generations: 15 };
+  const first = randomizer.applyRunToSave(folder, gen4Run, { gameId: 'colosseum', backups });
+  assert.equal(first.previous, null);
+  assert.deepEqual(first.run, gen4Run);
+  assert.equal(first.frozenCount, 1);
+  assert.ok(first.backup);
+  assert.equal(saves.listBackups(backups).length, 1);
+  assert.equal(saves.listBackups(backups)[0].reason, 'before-randomizer-apply');
+  assert.deepEqual(randomizer.readSave(folder, 'colosseum'), { exists: true, run: gen4Run });
+
+  // Verify snagged id 1 kept Makuhita (296) and is marked frozen (0xD2), while unsnagged id 2 is NOT frozen.
+  let data = fs.readFileSync(path.join(folder, 'pokemon_colosseum.dat'));
+  let newest = gciSave.newestPlain(data).plain;
+  assert.equal(newest.readUInt16BE(0x1b4ac + 0x18 * 1 + 0x10), 296);
+  assert.equal(newest[0x1b4ac + 0x18 * 1 + 0x13], randomizer.FROZEN_MARK);
+  assert.equal(newest[0x1b4ac + 0x18 * 2 + 0x13], 0);
+  // Older valid slot was updated too so fallback cannot revert the run.
+  const older = gciSave.unscramble(data.subarray(FIRST, FIRST + SLOT));
+  assert.deepEqual(randomizer.runOf(older), gen4Run);
+
+  // 2) Simulate snagging id 2 as Chimchar (national 390 -> Colosseum id 416) under Gen 4 run, then updating to Gen 1-6.
+  const spoiler = 'seed C0FFEE11 options 19 generations 15\nshadow 1 296 390\nshadow 2 153 390\n';
+  const speciesByNational = new Map([[390, 416]]);
+  savePokemon.editCard(folder, 'colosseum', ctx => {
+    shadowEntries.setColosseumFlag(ctx.plain, 'snagged', 2, true);
+    ctx.plain.writeUInt16BE(416, savePokemon.COLOSSEUM.party + savePokemon.COLOSSEUM.size);
+    ctx.plain.writeUInt16BE(2, savePokemon.COLOSSEUM.party + savePokemon.COLOSSEUM.size + savePokemon.COLOSSEUM.at.shadow);
+    return { ok: true };
+  });
+  const gen6Run = { seed: 'C0FFEE11', options: 531, generations: 63 };
+  const second = randomizer.applyRunToSave(folder, gen6Run, { gameId: 'colosseum', backups, spoilerRaw: spoiler, speciesByNational });
+  assert.deepEqual(second.run, gen6Run);
+  assert.equal(second.frozenCount, 1); // only newly snagged id 2; id 1 was already frozen
+  data = fs.readFileSync(path.join(folder, 'pokemon_colosseum.dat'));
+  newest = gciSave.newestPlain(data).plain;
+  assert.equal(newest.readUInt16BE(0x1b4ac + 0x18 * 1 + 0x10), 296); // still Makuhita!
+  assert.equal(newest.readUInt16BE(0x1b4ac + 0x18 * 2 + 0x10), 416); // locked to Chimchar!
+  assert.equal(newest[0x1b4ac + 0x18 * 2 + 0x13], randomizer.FROZEN_MARK);
+
+  // 3) Revert Randomized -> Normal game
+  const third = randomizer.applyRunToSave(folder, null, { gameId: 'colosseum', backups });
+  assert.deepEqual(third.previous, gen6Run);
+  assert.equal(third.run, null);
+  assert.deepEqual(randomizer.readSave(folder, 'colosseum'), { exists: true, run: null });
+  data = fs.readFileSync(path.join(folder, 'pokemon_colosseum.dat'));
+  newest = gciSave.newestPlain(data).plain;
+  assert.equal(newest.readUInt16BE(0x1b4ac + 0x18 * 2 + 0x10), 416); // Chimchar preserved even after revert!
+});
+
+function xdCard({ count = 1, run = null, darkRecords = [], party = [] } = {}) {
+  const folder = tempFolder();
+  const pack = Buffer.alloc(xdSave.PACK_SIZE);
+  // Place sections cleanly inside the pack body (after 0xA0)
+  const setSection = (tableAt, offset) => {
+    pack.writeUInt16BE(offset & 0xffff, tableAt);
+    pack.writeUInt16BE((offset >>> 16) & 0xffff, tableAt + 2);
+  };
+  setSection(xdSave.SECTION.hero, 0x0000);
+  setSection(xdSave.SECTION.pcBox, 0x1000);
+  setSection(0x48, 0xd000); // dayCare
+  setSection(xdSave.SECTION.darkPokemon, 0xd200);
+  setSection(xdSave.SECTION.reserve1, 0xf800);
+  setSection(0x70, 0xfc00); // chamber
+  if (run) randomizer.writeStamp(pack, xdSave.stampAt(pack), run);
+  const darkBase = xdSave.sectionAt(pack, 'darkPokemon');
+  for (const { id, species, status } of darkRecords) {
+    const rec = darkBase + id * 0x48;
+    pack[rec] = (status & 7) << 5;
+    pack.writeUInt16BE(species, rec + 0x1a);
+    pack.writeUInt16BE(id, rec + 0x3e);
+  }
+  const heroBase = xdSave.sectionAt(pack, 'hero');
+  party.forEach(({ species, shadowId = 0 }, i) => {
+    const at = heroBase + xdSave.PARTY + i * xdSave.POKEMON;
+    pack.writeUInt16BE(species, at);
+    pack.writeUInt16BE(shadowId, at + 0xba);
+  });
+  const file = Buffer.alloc(xdSave.SLOTS[1] + xdSave.SLOT_SIZE);
+  const start = xdSave.SLOTS[0];
+  file[start] = file[start + 1] = file[start + 2] = 1;
+  file.writeInt32BE(count, start + 4);
+  xdSave.encipher(pack).copy(file, start + xdSave.PACK);
+  fs.writeFileSync(path.join(folder, 'PokemonXD.dat'), file);
+  return folder;
+}
+
+test('applyRunToSave works on XD saves (enable, update to Gen 5+6, revert) and freezes snagged Shadow Monitor records', () => {
+  const backups = tempFolder();
+  const folder = xdCard({
+    count: 5,
+    run: { seed: 'DEADBEEF', options: 19, generations: 15 },
+    darkRecords: [
+      { id: 1, species: 216, status: savePokemon.XD_STATUS.snagged }, // Teddiursa snagged as Chimchar (XD id 418)
+      { id: 2, species: 165, status: savePokemon.XD_STATUS.met }      // Ledyba only seen, not snagged
+    ],
+    party: [{ species: 418, shadowId: 1 }]
+  });
+  // Update Gen 4 -> Gen 1-6 (fallback to owned party Pokemon id 418 when no spoiler file exists)
+  const gen6Run = { seed: 'DEADBEEF', options: 531, generations: 63 };
+  const updated = randomizer.applyRunToSave(folder, gen6Run, { gameId: 'xd', backups });
+  assert.deepEqual(updated.run, gen6Run);
+  assert.equal(updated.frozenCount, 1);
+  assert.deepEqual(randomizer.readSave(folder, 'xd'), { exists: true, run: gen6Run });
+
+  let pack = xdSave.newestPack(fs.readFileSync(path.join(folder, 'PokemonXD.dat'))).plain;
+  const darkBase = xdSave.sectionAt(pack, 'darkPokemon');
+  assert.equal(pack.readUInt16BE(darkBase + 1 * 0x48 + 0x1a), 418);
+  assert.equal(pack[darkBase + 1 * 0x48 + 0x43], randomizer.FROZEN_MARK);
+  assert.equal(pack[darkBase + 2 * 0x48 + 0x43], 0); // seen-only is NOT frozen
+
+  // Revert XD save to normal game
+  const reverted = randomizer.applyRunToSave(folder, null, { gameId: 'xd', backups });
+  assert.equal(reverted.run, null);
+  assert.deepEqual(randomizer.readSave(folder, 'xd'), { exists: true, run: null });
+  pack = xdSave.newestPack(fs.readFileSync(path.join(folder, 'PokemonXD.dat'))).plain;
+  assert.equal(pack.readUInt16BE(xdSave.sectionAt(pack, 'darkPokemon') + 1 * 0x48 + 0x1a), 418);
 });

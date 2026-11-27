@@ -3283,6 +3283,44 @@ function battleVersion(bytes) {
   return match ? Number(match[1]) : null;
 }
 
+function hasOwnPackPokemon() {
+  if (config.game !== games.DEFAULT) return false;
+  const dir = pokemonPacksDirectory();
+  if (!fs.existsSync(dir)) return false;
+  try {
+    return fs.readdirSync(dir, { withFileTypes: true }).some(pack => pack.isDirectory() && !pack.name.startsWith('.')
+      && fs.readdirSync(path.join(dir, pack.name), { withFileTypes: true }).some(entry => entry.isDirectory()
+        && fs.existsSync(path.join(dir, pack.name, entry.name, pokemonPacks.ENTRY_FILE))));
+  } catch (_) { return false; }
+}
+
+function randomizerCapabilities(root, repoReady, packPokemon = hasOwnPackPokemon()) {
+  if (!repoReady) return {};
+  const features = onlineFeatures(root);
+  return {
+    laterGenerations: features.randomizerGenerations,
+    gen6Randomizer: features.randomizerGen6,
+    packPokemon: Boolean(packPokemon && features.randomizerPacks),
+    noRepeats: features.randomizerNoRepeats,
+    baseForms: features.randomizerBaseForms,
+    spread: features.randomizerSpread
+  };
+}
+
+function speciesByNationalMap() {
+  const map = new Map();
+  try {
+    const list = pokedexList(port.validateRom(config.rom, config.game));
+    for (const entry of list.species) if (entry.national && entry.id) map.set(entry.national, entry.id);
+    const xd = config.game === 'xd';
+    for (const entry of list.packs) {
+      if (!entry.pack?.id?.startsWith('generation-') || !entry.national || !entry.packId || map.has(entry.national)) continue;
+      map.set(entry.national, xd ? tradeConvert.speciesFromColosseum('xd', entry.packId) : entry.packId);
+    }
+  } catch (_) { /* disc not set up yet: owned Pokémon in the save still supply internal species IDs */ }
+  return map;
+}
+
 // Whether the game at root plays randomized runs: Colosseum's has since its randomizer.c; XD's shares that file with
 // Colosseum's, so its game says so itself (onlineFeatures).
 function randomizerReady(root) {
@@ -3928,6 +3966,10 @@ function state() {
   const ready = repoReady && binaryReady();
   const installedBuild = ready ? game.installed(config.repo, config.game) : null;
   const release = activeGame().release;
+  const rSave = saveRun(currentSaveDirectory(), config.game);
+  const rReady = repoReady && randomizerReady(config.repo);
+  const rPlanned = randomizer.plannedRun(config.settings, randomizerCapabilities(config.repo, repoReady));
+  const rCanApply = Boolean(rSave.exists && (rPlanned ? rReady : true) && !randomizer.runsEqual(rSave.run, rPlanned));
   return {
     config, platform: info,
     // The game chosen on the Play page, the others to choose from, and what the chosen one has of the launcher's
@@ -3962,7 +4004,12 @@ function state() {
     backups: saves.listBackups().filter(item => item.source === currentSaveDirectory()),
     crashReports: crashReports.summary(crashReports.directory()), directPlayFailure,
     // The run on the memory card, and whether the game on disk can play one.
-    randomizerSave: saveRun(currentSaveDirectory(), config.game), randomizerReady: repoReady && randomizerReady(config.repo),
+    randomizerSave: rSave, randomizerReady: rReady,
+    randomizerApply: rCanApply ? {
+      revert: !rPlanned,
+      from: randomizer.runSummary(rSave.run, config.game),
+      to: randomizer.runSummary(rPlanned, config.game)
+    } : null,
     randomizerGenerations: repoReady && onlineFeatures(config.repo).randomizerGenerations,
     randomizerGen6: repoReady && onlineFeatures(config.repo).randomizerGen6,
     randomizerPacks: repoReady && onlineFeatures(config.repo).randomizerPacks,
@@ -4188,12 +4235,32 @@ function registerHandlers() {
     if (!run) throw new Error('Your save isn\'t a randomized run, so there are no spoilers to show.');
     let raw = null;
     try { raw = fs.readFileSync(spoilerFile(), 'utf8'); } catch (_) { /* written when the game opens the run */ }
-    if (randomizer.spoilerSeed(raw) !== run.seed) throw new Error('Open your save in the game once first: the spoiler log is written when it loads.');
+    if (!randomizer.spoilerMatches(raw, run)) throw new Error('Open your save in the game once first: the spoiler log is written when it loads.');
     const readable = path.join(app.getPath('userData'), 'Randomizer spoilers.txt');
     // the disc's Pokémon and a later generation's, which the log has by number, then packs' own, which it has by their places
     const list = pokedexList(port.validateRom(config.rom, config.game)), later = entry => entry.pack.id.startsWith('generation-');
     fs.writeFileSync(readable, randomizer.spoilerText(raw, [...list.species, ...list.packs.filter(later)], list.packs.filter(entry => !later(entry)), config.game));
     await shell.openPath(readable);
+  });
+  ipcMain.handle('randomizer-apply-to-save', () => {
+    requireFeature('randomizer', 'The randomizer');
+    if (active || operation || storyGame === config.game)
+      throw new Error(`Close ${shortGameName(config.game)} before changing your save's randomizer settings.`);
+    const repoReady = port.isPort(config.repo, config.game);
+    const planned = randomizer.plannedRun(config.settings, randomizerCapabilities(config.repo, repoReady));
+    if (planned && !(repoReady && randomizerReady(config.repo)))
+      throw new Error('Update your game before applying randomizer settings to your save.');
+    let spoilerRaw = null;
+    try { spoilerRaw = fs.readFileSync(spoilerFile(), 'utf8'); } catch (_) { /* optional */ }
+    const result = randomizer.applyRunToSave(currentSaveDirectory(), planned, {
+      gameId: config.game, backups: saves.backupRoot(), spoilerRaw, speciesByNational: speciesByNationalMap()
+    });
+    saveRun.invalidate();
+    try { fs.rmSync(spoilerFile(), { force: true }); } catch (_) { /* next load writes a fresh spoiler log */ }
+    log(planned
+      ? `Applied randomizer settings to ${shortGameName(config.game)}'s save (${randomizer.runSummary(planned, config.game)}).`
+      : `Removed randomizer settings from ${shortGameName(config.game)}'s save (reverted to normal game).`);
+    return { ...state(), randomizerApplied: { revert: !planned, frozenCount: result.frozenCount, backup: Boolean(result.backup) } };
   });
   ipcMain.handle('pokemon-page', () => pokemonPage());
   ipcMain.handle('pokemon-change-form', (_event, place, identity, to) => {

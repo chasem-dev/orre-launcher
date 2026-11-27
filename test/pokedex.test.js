@@ -186,6 +186,48 @@ test('triangles wind the other way round for WebGL', () => {
   assert.equal(shape.doubleSided, false);
 });
 
+test('display list vertices read attributes in GX hardware order even when the descriptor table lists TEX0 before CLR0', () => {
+  // Reproduces Braixen/Delphox FireCoreA meshes where the exporter places TEX0 (13) before CLR0 (11) in the
+  // attribute table while writing display list vertex indices in GX attribute-number order (POS=9, CLR0=11, TEX0=13).
+  function unsortedColorTexModel(data, pointer) {
+    const JOINT = 0x10, DOBJ = 0x60, POBJ = 0x80, ATTRS = 0xa0, LIST = 0x120, POSITIONS = 0x150, UVS = 0x180, COLORS = 0x1a0;
+    const SET = 0x1c0, MODELS = 0x1d0, ROOT = 0x1d8;
+    data.writeUInt32BE(1 << 1, JOINT + 4);
+    pointer(JOINT + 0x10, DOBJ);
+    for (const at of [0x20, 0x24, 0x28]) data.writeFloatBE(1, JOINT + at);
+    pointer(DOBJ + 0x0c, POBJ);
+    pointer(POBJ + 8, ATTRS);
+    data.writeUInt16BE(0x8000, POBJ + 0x0c);
+    data.writeUInt16BE(1, POBJ + 0x0e);
+    pointer(POBJ + 0x10, LIST);
+    // Attr 0: POS (9), u16 index (3), 3 floats (type=4, cnt=1), stride 12
+    data.writeUInt32BE(9, ATTRS); data.writeUInt32BE(3, ATTRS + 4); data.writeUInt32BE(1, ATTRS + 8);
+    data.writeUInt32BE(4, ATTRS + 12); data.writeUInt16BE(12, ATTRS + 0x12); pointer(ATTRS + 0x14, POSITIONS);
+    // Attr 1: TEX0 (13) listed BEFORE CLR0 (11), u16 index (3), 2 floats (type=4, cnt=1), stride 8
+    const A1 = ATTRS + 0x18;
+    data.writeUInt32BE(13, A1); data.writeUInt32BE(3, A1 + 4); data.writeUInt32BE(1, A1 + 8);
+    data.writeUInt32BE(4, A1 + 12); data.writeUInt16BE(8, A1 + 0x12); pointer(A1 + 0x14, UVS);
+    // Attr 2: CLR0 (11) listed AFTER TEX0 (13), u8 index (2), RGBA8 (type=5, cnt=1), stride 4
+    const A2 = ATTRS + 0x30;
+    data.writeUInt32BE(11, A2); data.writeUInt32BE(2, A2 + 4); data.writeUInt32BE(1, A2 + 8);
+    data.writeUInt32BE(5, A2 + 12); data.writeUInt16BE(4, A2 + 0x12); pointer(A2 + 0x14, COLORS);
+    data.writeUInt32BE(0xff, ATTRS + 0x48);
+    // Display list writes vertex fields in GX order: POS (2B), CLR0 (1B), TEX0 (2B) -> 5 bytes per vertex
+    data.set([0x90, 0, 3,
+      0, 0, 0, 0, 0,
+      0, 1, 0, 0, 1,
+      0, 2, 0, 0, 2], LIST);
+    [[0, 0, 0], [1, 0, 0], [0, 1, 0]].flat().forEach((v, i) => data.writeFloatBE(v, POSITIONS + i * 4));
+    [[0, 0], [1, 0], [0, 1]].flat().forEach((v, i) => data.writeFloatBE(v, UVS + i * 4));
+    data.writeUInt32BE(0xff8000ff, COLORS);
+    pointer(SET, JOINT); pointer(MODELS, SET); pointer(ROOT, MODELS);
+    return ROOT;
+  }
+  const model = hsd.parseModel(pkx(unsortedColorTexModel));
+  assert.equal(model.shapes.length, 1);
+  assert.deepEqual([...model.shapes[0].index], [0, 1, 2]);
+});
+
 test('an animation holds the rest pose where it has no track, and moves where it has', () => {
   const clip = hsd.parseClip(pkx(triangleModel), 0);
   assert.equal(clip.frames, 3);

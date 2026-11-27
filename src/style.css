@@ -975,6 +975,13 @@ pre { height: 120px; margin: 0; padding: 12px; overflow: auto; border-radius: 8p
 .randomizer-checks label.disabled { opacity: .45; }
 .randomizer-options > .row-note { margin: -4px 0 0; padding-bottom: 12px; color: #826f7f; font-size: 11px; line-height: 1.45; }
 .dark .randomizer-checks input { accent-color: #ffc75a; }
+.randomizer-save .actions { flex: none; display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+.randomizer-apply-diff { display: grid; gap: 10px; padding: 12px 14px; border-radius: 10px; background: rgba(132, 29, 116, .06); border: 1px solid rgba(132, 29, 116, .14); margin-bottom: 14px; }
+.dark .randomizer-apply-diff { background: rgba(255, 199, 90, .06); border-color: rgba(255, 199, 90, .18); }
+.randomizer-apply-diff > div { display: grid; gap: 2px; }
+.randomizer-apply-label { font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: #826f7f; }
+.dark .randomizer-apply-label { color: #c7aac0; }
+.randomizer-apply-diff strong { font-size: 13px; line-height: 1.4; }
 /* Online */
 .online-count { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; color: #816d7a; font-size: 12px; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .online-count i { width: 7px; height: 7px; border-radius: 50%; background: #2fae7a; box-shadow: 0 0 0 3px #2fae7a2e; }

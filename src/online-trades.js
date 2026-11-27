@@ -41,6 +41,12 @@ function tradeEvolution(game, bytes) {
   return into ? convert.speciesFromColosseum(game, into[1]) : 0;
 }
 
+// What would keep any game from taking a Pokémon (this game's bytes) whatever its settings: an egg, damaged data, a
+// Shadow, a pack Pokémon, a key item. Every later generation counts as turned on: whether the other player's game has
+// it on is theirs to say, in their verdict.
+const ANY_GAME = { laterPokemon: true, laterMoves: true, laterItems: true, gen6Pokemon: true, gen6Moves: true, gen6Items: true };
+const offerProblems = (game, bytes) => convert.problems(convert.read(game, bytes), { ...ANY_GAME, game });
+
 // What the trade window shows of a Pokémon: every stat it has, in the viewer's game's numbers, from its bytes, whichever
 // game's (the page works out from them what the game would show: gender, ability, nature's effect, Hidden Power).
 // The team builder's battle data the page reads that from is by Colosseum's numbers, so each number also comes in
@@ -210,7 +216,7 @@ class OnlineTrades extends EventEmitter {
     const identity = { species: pokemon.species, rnd: pokemon.rnd, trainer: pokemon.trainer };
     const found = savePokemon.findPokemon(read.ctx, identity, place);
     // what would keep any game from taking it (the other's own say comes as its verdict)
-    const own = convert.problems(convert.read(this.room.game, found.bytes), { game: this.room.game, laterPokemon: true, laterMoves: true, laterItems: true });
+    const own = offerProblems(this.room.game, found.bytes);
     if (own.length) throw new Error(own[0].text);
     this.mine = { place, identity, data: b64(found.bytes), summary: summary(this.room.game, found.bytes) };
     this.session.offer({ game: this.room.game, data: this.mine.data });
@@ -435,4 +441,4 @@ class OnlineTrades extends EventEmitter {
   }
 }
 
-module.exports = { OnlineTrades, summary, tradeEvolution, TRADE_EVOLUTIONS };
+module.exports = { OnlineTrades, summary, tradeEvolution, offerProblems, TRADE_EVOLUTIONS };

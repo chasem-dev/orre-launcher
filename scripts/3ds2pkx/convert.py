@@ -37,6 +37,8 @@ from shared.IR.animation import IRKeyframe, IRBoneTrack, IRBoneAnimationSet, IRM
 from shared.IR.enums import (SkinType, ScaleInheritance, Interpolation, CoordType, WrapMode, LayerBlendMode,  # noqa: E402
                              LightmapChannel, ColorSource, LightingModel, OutputBlendEffect, BlendFactor)
 from shared.IR.material import GXTextureFormat                                           # noqa: E402
+from shared.Constants.hsd import (RENDER_NO_ZUPDATE, JOBJ_XLU, JOBJ_TEXEDGE,               # noqa: E402
+                                  JOBJ_ROOT_XLU, JOBJ_ROOT_TEXEDGE)
 from shared.helpers.pkx_header import PKXHeader, AnimMetadataEntry, SubAnim, BODY_MAP_KEYS  # noqa: E402
 from shared.helpers.logger import StubLogger                                              # noqa: E402
 from exporter.phases.plan.helpers.scene import refine_bone_flags                          # noqa: E402
@@ -59,17 +61,72 @@ boundbox.install(compose_phase)
 textures.install(shared.texture_encoder)
 
 
+def _render_mode(ir_mat, build=compose_materials._build_render_mode):
+    """Set RENDER_NO_ZUPDATE on translucent materials whose 3DS shader disables depth writes (e.g. Reuniclus's jelly,
+    Avalugg's ice visor, Chandelure's flames, Zygarde's glow). HSD panics if RENDER_NO_ZUPDATE is set without
+    RENDER_XLU, so only set it on translucent materials."""
+    mode = build(ir_mat)
+    if ir_mat.is_translucent and getattr(ir_mat, 'no_depth_update', False):
+        mode |= RENDER_NO_ZUPDATE
+    return mode
+
+
+compose_materials._build_render_mode = _render_mode
+
+
 def _pixel_engine(fragment_blending, build=compose_materials._build_pixel_engine):
-    """Ensure PE flags enable colour update + depth test + depth update on alpha-tested cutouts. A material whose
-    depth test always passes (ALWAYS, 7: _through_material) neither tests nor writes depth: drawn over what is in
-    front of it, as the 3DS draws a part seen through another."""
+    """Ensure PE flags enable colour update + depth test + depth update on alpha-tested cutouts, and disable depth
+    update on translucent materials with depth_write=False. A material whose depth test always passes (ALWAYS, 7:
+    _through_material) neither tests nor writes depth: drawn over what is in front of it, as the 3DS draws a part
+    seen through another."""
     pe = build(fragment_blending)
     if pe is not None:
-        pe.flags = 0x01 if fragment_blending.depth_compare == 7 else 0x01 | 0x10 | 0x20
+        if fragment_blending.depth_compare == 7:
+            pe.flags = 0x01
+        elif getattr(fragment_blending, 'no_depth_update', False):
+            pe.flags = 0x01 | 0x10
+        else:
+            pe.flags = 0x01 | 0x10 | 0x20
     return pe
 
 
 compose_materials._build_pixel_engine = _pixel_engine
+
+
+def _xlu_flags(bones, meshes):
+    """Split translucent bones between JOBJ_TEXEDGE (depth-writing cutouts / hideable parts) and JOBJ_XLU
+    (RENDER_XLU | RENDER_NO_ZUPDATE parts). GameCube HSD puts RENDER_XLU|RENDER_NO_ZUPDATE DObjs in the XLU pass
+    (drawn last, after all opaque and cutout meshes), so joints owning them must carry JOBJ_XLU / JOBJ_ROOT_XLU."""
+    texedge, xlu = set(), set()
+    for m in meshes:
+        bi = m.parent_bone_index
+        mat = m.material
+        if bi >= len(bones) or mat is None or not getattr(mat, 'is_translucent', False):
+            continue
+        if getattr(mat, 'no_depth_update', False):
+            xlu.add(bi)
+        else:
+            texedge.add(bi)
+    texedge_anc, xlu_anc = set(texedge), set(xlu)
+    for i in range(len(bones) - 1, -1, -1):
+        pi = bones[i].parent_index
+        if pi is not None:
+            if i in texedge_anc:
+                texedge_anc.add(pi)
+            if i in xlu_anc:
+                xlu_anc.add(pi)
+    clear = JOBJ_TEXEDGE | JOBJ_XLU | JOBJ_ROOT_TEXEDGE | JOBJ_ROOT_XLU
+    for i, bone in enumerate(bones):
+        flags = bone.flags & ~clear
+        if i in texedge:
+            flags |= JOBJ_TEXEDGE
+        if i in xlu:
+            flags |= JOBJ_XLU
+        if i in texedge_anc:
+            flags |= JOBJ_ROOT_TEXEDGE
+        if i in xlu_anc:
+            flags |= JOBJ_ROOT_XLU
+        bone.flags = flags
 
 
 def _display_list(faces, vertices, vertex_descs, vertex_buffers, *rest, encode=compose_meshes._encode_display_list, **named):
@@ -307,6 +364,21 @@ def _iris_mask(gf_mat, tex_dict):
     return units[2], tex
 
 
+def _chandela_fire_mask(gf_mat, tex_dict):
+    """(texture coordinate, texture) of the flame mask on Litwick, Lampent and Chandelure (PDC_pm_chandela_FireGRE).
+    Their blended flame meshes use a solid flame-colour texture on u0 and a grayscale flame-shape mask on u2
+    (...Mask.tga); without u2 as an alpha mask the flame draws as opaque purple/blue squares."""
+    if not gf_mat or 'chandela_fire' not in gf_mat.get('shader', '').lower() or not gf_mat.get('blend_enabled'):
+        return None
+    units = gf_mat.get('tex_coords') or []
+    if len(units) < 3:
+        return None
+    tex = tex_dict.get(units[2]['name'].lower())
+    if not tex:
+        return None
+    return units[2], tex
+
+
 def _apply_uv_transform(u, v, tc):
     """Apply PICA200 / Maya GFTextureCoord (scale, rotation, translation) to (u, v)."""
     if not tc:
@@ -529,16 +601,17 @@ def _drawn_as(effect, source, dest, depth_compare):
                             alpha_test_threshold_1=7, alpha_test_op=0, depth_compare=depth_compare)
 
 
-def _special_material(gf_mat):
+def _special_material(gf_mat, tex_dict=None, images=None, max_size=256):
     """A material the 3DS draws in a way the usual one can't stand for, or None:
 
     - Depth only (blended ZERO, ONE: Mega Gengar's mask, a sheet at its feet): writes depth and no colour, so what
       is below the ground stays hidden. The stage's own floor hides that in the game, so nothing is drawn: build
       leaves such parts out, as the game's shadow would still have the sheet's shape (a dark square). Drawn as a
       texture it was a white sheet.
-    - Yveltal's markings, Mega Gallade's aura and Zygarde's glows (PDC_pm0769_Y_EffA and EffB shaders, added): glows
-      whose strength is a constant the animations set; at rest it is 0, so nothing is drawn (and they are left out).
-      Drawn as their first texture they were black and white streaks.
+    - Yveltal's markings, Mega Gallade's aura and Zygarde's glows (PDC_pm0769_Y_EffA, EffB and PDC_pm0770_Z_EffB
+      shaders, added): glows whose strength is a constant the animations set; at rest it is 0, so nothing is drawn
+      (and they are left out). Where EffA is lit at rest (Zygarde 50%'s green hexagonal glow), it tints its mask
+      by stage 2's constant colour instead of drawing the raw white mask texture.
     - Primal Kyogre's glowing lines (kyogresp Lay1 Core): meshes inside its body, drawn see-through over it without
       a depth test, but only where its own shell is in front (the stencil). Here: the same colour and see-through,
       with no depth test; the shell's outline isn't kept, so they would show over anything in front of Kyogre too.
@@ -549,18 +622,59 @@ def _special_material(gf_mat):
     nothing = _plain_material(blending=_drawn_as(OutputBlendEffect.INVISIBLE, BlendFactor.ZERO, BlendFactor.ONE, 7))
     if (gf_mat.get('blend_src'), gf_mat.get('blend_dst')) == (0, 1):
         return nothing
-    if 'pm0769_y_effa' in shader:   # alpha: stage 4's constant
-        return nothing if _stage_constant(gf_mat, 4)[3] <= 0 else None
-    if 'pm0769_y_effb' in shader:   # colour and alpha: times stage 0's constant's alpha
+    if 'pm0769_y_effa' in shader:   # alpha: stage 4's constant; tint: stage 2's constant
+        a = _stage_constant(gf_mat, 4)[3]
+        if a <= 0:
+            return nothing
+        if tex_dict is None or images is None:
+            return None
+        units = gf_mat.get('tex_coords') or []
+        tc = units[0] if units else None
+        tex = tex_dict.get(tc['name'].lower()) if tc else None
+        if not tex:
+            return None
+        key = tex['name'].lower()
+        if key not in images:
+            images[key] = _make_ir_image(tex, 0x7000 + len(images), max_size)
+        tint = _stage_constant(gf_mat, 2)[:3] + (1.0,)
+        layer = IRTextureLayer(
+            image=images[key], coord_type=CoordType.UV, uv_index=0,
+            rotation=(0.0, 0.0, 0.0), scale=(1.0, 1.0, 1.0), translation=(0.0, 0.0, 0.0),
+            wrap_s=PICA_WRAP.get(tc['wrap_u'], WrapMode.REPEAT), wrap_t=PICA_WRAP.get(tc['wrap_v'], WrapMode.REPEAT),
+            repeat_s=1, repeat_t=1, interpolation=None,
+            color_blend=LayerBlendMode.MULTIPLY, alpha_blend=LayerBlendMode.MULTIPLY,
+            blend_factor=1.0, lightmap_channel=LightmapChannel.DIFFUSE, is_bump=False, combiner=None,
+        )
+        fb = FragmentBlending(effect=OutputBlendEffect.ADDITIVE_ALPHA, source_factor=BlendFactor.SRC_ALPHA,
+                              dest_factor=BlendFactor.ONE, alpha_test_threshold_0=4, alpha_test_threshold_1=7,
+                              alpha_test_op=0, depth_compare=3)
+        fb.no_depth_update = True
+        mat = IRMaterial(
+            diffuse_color=tint, ambient_color=(1.0, 1.0, 1.0, 1.0), specular_color=(1.0, 1.0, 1.0, 1.0),
+            alpha=float(a), shininess=50.0, color_source=ColorSource.MATERIAL, alpha_source=ColorSource.MATERIAL,
+            lighting=LightingModel.UNLIT, enable_specular=False, is_translucent=True, texture_layers=[layer],
+            fragment_blending=fb,
+        )
+        mat.no_depth_update = True
+        return mat
+    if 'pm0769_y_effb' in shader or 'pm0770_z_effb' in shader:   # colour and alpha: times stage 0's constant's alpha
         return nothing if _stage_constant(gf_mat, 0)[3] <= 0 else None
+    # Victini's V-aura (pm0150_51_neuron2), Tepig's tail flare (pm_pokabu_tail), Kyurem's glow (pm_chonchie_glow)
+    # and Xerneas's back aura (pm0768_x_back) fade via stage 4's constant alpha; zebraika_thunder fades via stage 3 RGB.
+    if any(k in shader for k in ('pm0150_51_neuron2', 'pm_pokabu_tail', 'pm_chonchie_glow', 'pm0768_x_back')):
+        return nothing if _stage_constant(gf_mat, 4)[3] <= 0 else None
+    if 'pm_zebraika_thunder' in shader:
+        return nothing if max(_stage_constant(gf_mat, 3)[:3]) <= 0 else None
     if 'kyogresp_lay1_core' in shader:
         # stage 1: its colour; 2: toward its pale colour by the vertex shader's alpha (FIRE_GLOW, as for fire);
         # 3: plus a dark one times its alpha; 5: times (stage 2's alpha + white), so twice; alpha: stage 4's
         k1, k2, k3 = (_stage_constant(gf_mat, i) for i in (1, 2, 3))
         twice = 1.0 + _stage_constant(gf_mat, 2)[3]
         colour = [min(1.0, min(1.0, k2[c] * FIRE_GLOW + k1[c] * (1.0 - FIRE_GLOW) + k3[c] * k3[3]) * twice) for c in range(3)]
-        return _plain_material(tuple(colour) + (_stage_constant(gf_mat, 4)[3],), translucent=True,
-                               blending=_drawn_as(OutputBlendEffect.ALPHA_BLEND, BlendFactor.SRC_ALPHA, BlendFactor.INV_SRC_ALPHA, 7))
+        mat = _plain_material(tuple(colour) + (_stage_constant(gf_mat, 4)[3],), translucent=True,
+                              blending=_drawn_as(OutputBlendEffect.ALPHA_BLEND, BlendFactor.SRC_ALPHA, BlendFactor.INV_SRC_ALPHA, 7))
+        mat.no_depth_update = True
+        return mat
     return None
 
 
@@ -573,12 +687,14 @@ def _draws_nothing(gf_mat):
 def _material_of(gf_mat, tex_dict, images, max_size, hideable=False, fire=False):
     if fire:
         return _fire_core_material(gf_mat, tex_dict, images, max_size, hideable)
-    special = _special_material(gf_mat)
+    special = _special_material(gf_mat, tex_dict, images, max_size)
     if special is not None:
         return special
     tc, tex = _pick_diffuse_texcoord(gf_mat, tex_dict)
     layers = []
     alpha = 'opaque'
+    tex_alpha = 'opaque'
+    mat_alpha = 1.0
     diffuse = (1.0, 1.0, 1.0, 1.0)
     ambient = (0.5, 0.5, 0.5, 1.0)
     lighting = LightingModel.LIT
@@ -596,11 +712,15 @@ def _material_of(gf_mat, tex_dict, images, max_size, hideable=False, fire=False)
         if key not in images:
             images[key] = _make_ir_image(tex, 0x7000 + len(images), max_size)
         ir_img = images[key]
-        alpha = ALPHA_KIND.get((ir_img.name, ir_img.image_id), 'opaque')
+        tex_alpha = ALPHA_KIND.get((ir_img.name, ir_img.image_id), 'opaque')
+        alpha = tex_alpha
         wrap_s = PICA_WRAP.get(tc['wrap_u'], WrapMode.REPEAT) if tc else WrapMode.REPEAT
         wrap_t = PICA_WRAP.get(tc['wrap_v'], WrapMode.REPEAT) if tc else WrapMode.REPEAT
-        # If material explicitly enables alpha test, treat as cut-out at minimum
-        if alpha == 'opaque' and gf_mat and gf_mat.get('alpha_test'):
+        # Materials with neither alpha blending nor alpha testing (ALW shaders, e.g. Scraggy's eyes sharing
+        # Eye1.tga with its iris, Malamar's BodyAUniran01) draw opaque on 3DS regardless of texture alpha.
+        if gf_mat and not gf_mat.get('blend_enabled') and not gf_mat.get('alpha_test'):
+            alpha = 'opaque'
+        elif alpha == 'opaque' and gf_mat and gf_mat.get('alpha_test'):
             alpha = 'cut'
         layers.append(IRTextureLayer(
             image=ir_img, coord_type=CoordType.UV, uv_index=0,
@@ -611,17 +731,25 @@ def _material_of(gf_mat, tex_dict, images, max_size, hideable=False, fire=False)
             blend_factor=1.0, lightmap_channel=LightmapChannel.DIFFUSE, is_bump=False, combiner=None,
         ))
 
-    mask = _iris_mask(gf_mat, tex_dict) if layers else None
+    iris_mask = _iris_mask(gf_mat, tex_dict) if layers else None
+    fire_mask = _chandela_fire_mask(gf_mat, tex_dict) if (layers and not iris_mask) else None
+    mask = iris_mask or fire_mask
     if mask:
         mtc, mtex = mask
-        key = mtex['name'].lower() + '#alpha'
-        if key not in images:
-            px = bytearray(mtex['rgba_flipped'])
-            px[0::4] = px[1::4] = px[2::4] = b'\xff' * (len(px) // 4)
-            images[key] = _make_ir_image(dict(mtex, name=mtex['name'][:-4] + 'Alpha.tga', rgba_flipped=px),
-                                         0x7000 + len(images), max_size)
+        if fire_mask:
+            mimg = _alpha_image(mtex, images, max_size)
+            alpha = 'blend'
+            lighting = LightingModel.UNLIT
+        else:
+            key = mtex['name'].lower() + '#alpha'
+            if key not in images:
+                px = bytearray(mtex['rgba_flipped'])
+                px[0::4] = px[1::4] = px[2::4] = b'\xff' * (len(px) // 4)
+                images[key] = _make_ir_image(dict(mtex, name=mtex['name'][:-4] + 'Alpha.tga', rgba_flipped=px),
+                                             0x7000 + len(images), max_size)
+            mimg = images[key]
         layers.append(IRTextureLayer(
-            image=images[key], coord_type=CoordType.UV, uv_index=1,
+            image=mimg, coord_type=CoordType.UV, uv_index=1,
             rotation=(0.0, 0.0, 0.0), scale=(1.0, 1.0, 1.0), translation=(0.0, 0.0, 0.0),
             wrap_s=PICA_WRAP.get(mtc['wrap_u'], WrapMode.REPEAT), wrap_t=PICA_WRAP.get(mtc['wrap_v'], WrapMode.REPEAT),
             repeat_s=1, repeat_t=1, interpolation=None, color_blend=LayerBlendMode.PASS,
@@ -629,9 +757,21 @@ def _material_of(gf_mat, tex_dict, images, max_size, hideable=False, fire=False)
             is_bump=False, combiner=None,
         ))
 
+    # Translucent shaders with opaque textures whose opacity comes from stage 4's constant alpha
+    # (e.g. Avalugg's BodyAIce01 visor over its eyes, Bergmite, Zekrom, Kyurem, Genesect, Diancie).
+    if (gf_mat and gf_mat.get('blend_enabled') and (gf_mat.get('blend_src'), gf_mat.get('blend_dst')) == (6, 7)
+            and tex_alpha == 'opaque' and not mask and gf_mat.get('constants')):
+        c4 = _stage_constant(gf_mat, 4)[3]
+        if 0.0 < c4 < 0.99:
+            mat_alpha = float(c4)
+            alpha = 'blend'
+            if layers:
+                layers[0].alpha_blend = LayerBlendMode.NONE
+
     added = bool(gf_mat and gf_mat.get('blend_dst') == 1)
     is_blend = (alpha == 'blend') or (gf_mat and gf_mat.get('blend_enabled') and alpha != 'opaque') or added
     translucent = bool(is_blend or hideable)
+    no_zwrite = bool(is_blend and gf_mat and gf_mat.get('blend_enabled') and not gf_mat.get('depth_write'))
     cut = None if translucent or alpha != 'cut' else FragmentBlending(
         effect=OutputBlendEffect.OPAQUE, source_factor=BlendFactor.ONE, dest_factor=BlendFactor.ZERO,
         alpha_test_threshold_0=4, alpha_test_threshold_1=7, alpha_test_op=0, depth_compare=3,
@@ -640,12 +780,16 @@ def _material_of(gf_mat, tex_dict, images, max_size, hideable=False, fire=False)
         cut = FragmentBlending(effect=OutputBlendEffect.ADDITIVE_ALPHA, source_factor=BlendFactor.SRC_ALPHA,
                                dest_factor=BlendFactor.ONE, alpha_test_threshold_0=4, alpha_test_threshold_1=7,
                                alpha_test_op=0, depth_compare=3)
-    return IRMaterial(
+    if cut is not None:
+        cut.no_depth_update = no_zwrite
+    mat = IRMaterial(
         diffuse_color=diffuse, ambient_color=ambient, specular_color=(1.0, 1.0, 1.0, 1.0),
-        alpha=1.0, shininess=50.0, color_source=ColorSource.MATERIAL, alpha_source=ColorSource.MATERIAL,
+        alpha=mat_alpha, shininess=50.0, color_source=ColorSource.MATERIAL, alpha_source=ColorSource.MATERIAL,
         lighting=lighting, enable_specular=False, is_translucent=translucent, texture_layers=layers,
         fragment_blending=cut,
     )
+    mat.no_depth_update = no_zwrite
+    return mat
 
 
 def _prepare_skeleton(gf_skel):
@@ -839,7 +983,7 @@ def _portraits(gf, order, meshes, geometry, bone_fields, parsed_motions, slot_ac
             kind, flat = 'through', tuple(int(c * 255) for c in mat.diffuse_color[:3]) + (int(mat.alpha * 255),)
         elif fb is not None and fb.effect == OutputBlendEffect.ADDITIVE_ALPHA:
             kind = 'add'
-        elif layer is not None and layer.alpha_blend != LayerBlendMode.NONE:
+        elif (layer is not None and layer.alpha_blend != LayerBlendMode.NONE) or mat.alpha < 0.999 or len(mat.texture_layers) > 1:
             kind = 'cut' if fb is not None else 'blend'
         else:
             kind = 'opaque'
@@ -853,7 +997,8 @@ def _portraits(gf, order, meshes, geometry, bone_fields, parsed_motions, slot_ac
                           mask=(seen.image, (seen.wrap_s.value, seen.wrap_t.value)) if seen else None,
                           mask_uvs=m.uv_layers[1].uvs if seen else None,
                           mask_adds=bool(seen and seen.alpha_blend == LayerBlendMode.ADD),
-                          tint=m.color_layers[0].colors if m.color_layers else None, flat=flat))
+                          tint=m.color_layers[0].colors if m.color_layers else None, flat=flat,
+                          mat_color=mat.diffuse_color[:3], mat_alpha=mat.alpha))
     return portrait.render(parts, has_head=bool(head))
 
 
@@ -1087,7 +1232,7 @@ def build(model_data, tex_blobs, battle_blobs, name, max_texture=256, log=print,
                     continue
                 gf_mat = gf_mats.get(sm['name'])
                 tc, _ = _pick_diffuse_texcoord(gf_mat, tex_dict)
-                mask = _iris_mask(gf_mat, tex_dict)
+                mask = _iris_mask(gf_mat, tex_dict) or _chandela_fire_mask(gf_mat, tex_dict)
                 glow = fire.get((mi, si))
                 if glow:   # a flame's core: its second texture's coordinates, and its colours (no normals: unlit)
                     tc = gf_mat['tex_coords'][0]
@@ -1176,6 +1321,7 @@ def build(model_data, tex_blobs, battle_blobs, name, max_texture=256, log=print,
     for mi, m in enumerate(meshes):
         bones[m.parent_bone_index].mesh_indices.append(mi)
     refine_bone_flags(bones, meshes, logger=StubLogger())
+    _xlu_flags(bones, meshes)
     for m in meshes:
         _undeform_normals(m, bones)
 

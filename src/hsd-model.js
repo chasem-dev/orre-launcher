@@ -210,6 +210,9 @@ function readAttributes(dat, at) {
   for (let item = at; dat.u32(item) !== VA_NULL; item += 0x18)
     attributes.push({ name: dat.u32(item), kind: dat.u32(item + 4), components: dat.u32(item + 8), type: dat.u32(item + 12),
       scale: 2 ** -dat.u8(item + 0x10), stride: dat.u16(item + 0x12), base: dat.pointer(item + 0x14) });
+  // GX display lists always pack vertex attributes in hardware attribute order (POS, NRM, CLR0, TEX0...),
+  // even when a DAT's vertex descriptor list puts CLR0 after TEX0 (3ds2pkx flame cores such as Braixen's).
+  attributes.sort((a, b) => a.name - b.name);
   return attributes;
 }
 

@@ -9,7 +9,7 @@ const key = text => String(text).toLowerCase();
 
 // What readGameTables reads from a disc, made up: moves as Colosseum numbers them, each row marked with its number.
 function tables() {
-  const names = { 33: 'Tackle', 98: 'Quick Attack', 105: 'Recover', 129: 'Swift', 57: 'Surf', 89: 'Earthquake', 14: 'Swords Dance', 315: 'Overheat',
+  const names = { 33: 'Tackle', 80: 'Petal Dance', 98: 'Quick Attack', 105: 'Recover', 129: 'Swift', 57: 'Surf', 89: 'Earthquake', 14: 'Swords Dance', 315: 'Overheat',
     163: 'Slash', 70: 'Strength', 55: 'Water Gun', 88: 'Rock Throw' };
   const moveRows = Array.from({ length: 358 }, (_, id) => { const row = Buffer.alloc(0x38); row[0x18] = id & 0xff; return row; });
   return { moves: new Map(Object.entries(names).map(([id, name]) => [key(name), Number(id)])), moveRows,
@@ -44,13 +44,16 @@ test('new moves keep their numbers, three past their own, and play as the move n
   assert.equal(generations.colosseumMove(33), 33);
   assert.equal(generations.speciesId(387), 413);
   const game = tables(), data = generations.load(4);
+  game.moveRows[315].writeUInt16BE(204, 0x1a);   // Overheat's Sp. Atk drop effect
   // A made-up table knows only a few moves: give each new move one of those to play as
-  const known = ['Recover', 'Quick Attack', 'Overheat', 'Slash', 'Strength', 'Water Gun', 'Rock Throw', 'Swift'];
-  const colosseum = { ...data.colosseum, moves: Object.fromEntries(Object.entries(data.colosseum.moves).map(([name, how]) => [name, how && { ...how, as: known.includes(how.as) ? how.as : 'Strength' }])) };
+  const known = ['Recover', 'Quick Attack', 'Overheat', 'Petal Dance', 'Slash', 'Strength', 'Water Gun', 'Rock Throw', 'Swift'];
+  const colosseum = { ...data.colosseum, moves: Object.fromEntries(Object.entries(data.colosseum.moves).map(([name, how]) =>
+    [name, how && { ...how, as: known.includes(how.as) ? how.as : 'Strength', ...(how.effectAs ? { effectAs: known.includes(how.effectAs) ? how.effectAs : 'Strength' } : {}) }])) };
   const moves = generations.newMoves(game, { ...data, colosseum });
   const leafStorm = moves.find(move => move.number === 437);
   assert.equal(leafStorm.id, 440);
-  assert.equal(leafStorm.row[0x18], 315 & 0xff, "Overheat's effect");
+  assert.equal(leafStorm.row[0x18], 80, "Petal Dance's animation row");
+  assert.equal(leafStorm.row.readUInt16BE(0x1a), 204, "Overheat's effect");
   assert.equal(leafStorm.row.readUInt16BE(0x16), 140);
   assert.equal(leafStorm.row[2], 12, 'Grass');
   const gift = moves.find(move => move.number === 363);
@@ -61,7 +64,8 @@ test("each new move has the trainer AI of a move the game has, which fits what i
   const game = tables(), data = generations.load(4);
   game.moveRows[105][0x13] = 1; game.moveRows[105][0x34] = 2;   // (a drawback mark and a kind the AI reads: Roost takes Recover's)
   const known = ['Recover', 'Quick Attack', 'Overheat', 'Slash', 'Strength', 'Water Gun', 'Rock Throw', 'Swift'];
-  const colosseum = { ...data.colosseum, moves: Object.fromEntries(Object.entries(data.colosseum.moves).map(([name, how]) => [name, how && { ...how, as: known.includes(how.as) ? how.as : 'Strength' }])) };
+  const colosseum = { ...data.colosseum, moves: Object.fromEntries(Object.entries(data.colosseum.moves).map(([name, how]) =>
+    [name, how && { ...how, as: known.includes(how.as) ? how.as : 'Strength', ...(how.effectAs ? { effectAs: known.includes(how.effectAs) ? how.effectAs : 'Strength' } : {}) }])) };
   const moves = generations.newMoves(game, { ...data, colosseum });
   const roost = moves.find(move => move.number === 355), suckerPunch = moves.find(move => move.number === 389);
   assert.equal(roost.ai, 105, 'Roost is judged as Recover');
@@ -98,7 +102,8 @@ test('a new move gets all its own flags, and keeps a chance its stand-in plays a
   game.moves.set('thunderpunch', 9);
   game.moveRows[9][5] = 10;
   const colosseum = { ...data.colosseum, moves: Object.fromEntries(Object.entries(data.colosseum.moves).map(([name, how]) =>
-    [name, how && { ...how, as: ['Fire Spin', 'ThunderPunch', 'Swift'].includes(how.as) ? how.as : 'Strength' }])) };
+    [name, how && { ...how, as: ['Fire Spin', 'ThunderPunch', 'Swift'].includes(how.as) ? how.as : 'Strength',
+      ...(how.effectAs ? { effectAs: ['Fire Spin', 'ThunderPunch', 'Swift'].includes(how.effectAs) ? how.effectAs : 'Strength' } : {}) }])) };
   const moves = generations.newMoves(game, { ...data, colosseum });
   const by = name => moves.find(move => move.name === name).row;
   assert.equal(by('AQUA TAIL')[0x12], 0, 'not an HM, though Strength is');
@@ -126,7 +131,8 @@ test("a generation's rules: categories by move, and the old moves it changed", (
 test('Acupressure is aimed, as Colosseum has no move for the user or its partner', () => {
   const game = tables(), data = generations.load(4);
   game.moveRows[70][3] = 5;   // the move it plays as here is the user's own, as Focus Energy is on the disc
-  const colosseum = { ...data.colosseum, moves: Object.fromEntries(Object.entries(data.colosseum.moves).map(([name, how]) => [name, how && { ...how, as: 'Strength' }])) };
+  const colosseum = { ...data.colosseum, moves: Object.fromEntries(Object.entries(data.colosseum.moves).map(([name, how]) =>
+    [name, how && { ...how, as: 'Strength', ...(how.effectAs ? { effectAs: 'Strength' } : {}) }])) };
   const acupressure = generations.newMoves(game, { ...data, colosseum }).find(move => move.name === 'ACUPRESSURE');
   assert.equal(acupressure.row[3], 0, 'a move a target is chosen for: the partner, or (aimed at a foe) the user');
   assert.equal(acupressure.row.readUInt16BE(0x1a), 244);
@@ -201,7 +207,10 @@ test('the game\'s own Pokémon learn and evolve as generation 4 has them when it
   const game = tables(), data = generations.load(4);
   game.species = [{ id: 193, national: 193, name: 'Yanma', row: Buffer.alloc(0x11c) }, { id: 412, national: 412, name: 'Egg', row: Buffer.alloc(0x11c) }];
   // each move a new one plays as, made up as one of the game's
-  Object.values(data.colosseum.moves).filter(Boolean).forEach((how, i) => { if (!game.moves.has(key(how.as))) game.moves.set(key(how.as), 1 + i % 300); });
+  Object.values(data.colosseum.moves).filter(Boolean).forEach((how, i) => {
+    if (!game.moves.has(key(how.as))) game.moves.set(key(how.as), 1 + i % 300);
+    if (how.effectAs && !game.moves.has(key(how.effectAs))) game.moves.set(key(how.effectAs), 1 + i % 300);
+  });
   const moves = generations.newMoves(game, data);
   const [yanma] = generations.ownSpecies(game, data, moves);
   assert.equal(yanma.id, 193);
@@ -298,4 +307,90 @@ test("the team builder's categories under generation 4's rules are each move's o
   assert.equal(categories[68], 'Physical', 'Counter');
   assert.equal(categories[14], 'Status', 'Swords Dance');
   assert.equal(Object.keys(categories).length, generations.FIRST_NEW_MOVE - 1, 'moves 1 to 354, the numbers Colosseum shares with later games');
+});
+
+test('item-evolution fallback levels stay above the pre-evolution level (Lampent, Doublade)', () => {
+  const data = generations.load(6);
+  const spec = generations.speciesSpec(tables(), data, 608, [], false);   // Lampent (evolves from Litwick at Lv 41)
+  assert.ok(spec.evolutions.length >= 1);
+  assert.equal(spec.evolutions[0].into, 'generation:609', 'Chandelure');
+  assert.ok(spec.evolutions[0].level > 41, `expected Lampent evolution level > 41, got ${spec.evolutions[0].level}`);
+  assert.equal(spec.evolutions[0].level, 50);
+  const doublade = generations.speciesSpec(tables(), data, 680, [], false);   // Doublade (evolves from Honedge at Lv 35)
+  assert.equal(doublade.evolutions[0].into, 'generation:681', 'Aegislash');
+  assert.ok(doublade.evolutions[0].level > 35, `expected Doublade evolution level > 35, got ${doublade.evolutions[0].level}`);
+  assert.equal(doublade.evolutions[0].level, 45);
+});
+
+test('Ice Shard and other Gen 4 priority moves keep +1 priority while playing type-matching animations', () => {
+  const data = generations.load(4);
+  assert.equal(data.moves[420].name, 'Ice Shard');
+  assert.equal(data.moves[420].priority, 1);
+  assert.equal(data.colosseum.moves['Ice Shard'].as, 'Icicle Spear');
+  assert.equal(data.colosseum.moves['Ice Shard'].effect, 0);
+  assert.equal(data.colosseum.moves['Aqua Jet'].as, 'Waterfall');
+  assert.equal(data.colosseum.moves['Shadow Sneak'].as, 'Shadow Punch');
+  assert.equal(data.colosseum.moves['Bullet Punch'].as, 'Meteor Mash');
+  assert.equal(data.colosseum.moves['Vacuum Wave'].as, 'Mach Punch');
+});
+
+test('Aura Sphere plays Mist Ball animation while keeping Swift never-miss effect', () => {
+  const game = tables(), data = generations.load(4);
+  assert.equal(data.colosseum.moves['Aura Sphere'].as, 'Mist Ball');
+  assert.equal(data.colosseum.moves['Aura Sphere'].effectAs, 'Swift');
+  game.moves.set('mist ball', 296);
+  game.moves.set('swift', 129);
+  game.moveRows[296].writeUInt16BE(72, 0x1a);   // Mist Ball lowers Sp. Atk
+  game.moveRows[296][5] = 50;
+  game.moveRows[129].writeUInt16BE(17, 0x1a);   // Swift never misses
+  game.moveRows[129][5] = 0;
+  const colosseum = { ...data.colosseum, moves: { 'Aura Sphere': data.colosseum.moves['Aura Sphere'] } };
+  const narrow = { ...data, newMoves: [396, 396], colosseum };
+  const [aura] = generations.newMoves(game, narrow);
+  assert.equal(aura.name, 'AURA SPHERE');
+  assert.equal(aura.as, 'Mist Ball');
+  assert.equal(aura.row.readUInt16BE(0x1a), 17, 'keeps Swift never-miss effect');
+  assert.equal(aura.row[5], 0, 'does not inherit Mist Ball side-effect chance');
+});
+
+test('Charge Beam, Grass Knot, Power Gem, Leaf Storm and Dazzling Gleam play type-matching animations and keep exact effects', () => {
+  const game = tables(), data4 = generations.load(4), data6 = generations.load(6);
+  const fairy = require('../src/generations/fairy-colosseum.json');
+  assert.equal(data4.colosseum.moves['Charge Beam'].as, 'Shock Wave');
+  assert.equal(data4.colosseum.moves['Charge Beam'].effect, 223);
+  assert.equal(data4.colosseum.moves['Grass Knot'].as, 'Vine Whip');
+  assert.equal(data4.colosseum.moves['Grass Knot'].effectAs, 'Low Kick');
+  assert.equal(data4.colosseum.moves['Power Gem'].as, 'AncientPower');
+  assert.equal(data4.colosseum.moves['Power Gem'].effect, 0);
+  assert.equal(data4.colosseum.moves['Leaf Storm'].as, 'Petal Dance');
+  assert.equal(data4.colosseum.moves['Leaf Storm'].effectAs, 'Overheat');
+  assert.equal(data6.colosseum.moves['Dazzling Gleam'].as, 'Sweet Scent');
+  assert.equal(data6.colosseum.moves['Dazzling Gleam'].effectAs, 'Tackle');
+  assert.equal(fairy.moves['Dazzling Gleam'].as, 'Sweet Scent');
+  assert.equal(fairy.moves['Dazzling Gleam'].effectAs, 'Tackle');
+
+  // Verify effectAs preserves both MV.effect and MV.chance (e.g. Overheat's 100% stat drop) even when as is another move
+  game.moves.set('petal dance', 80);
+  game.moveRows[80].writeUInt16BE(27, 0x1a);   // Thrash/Petal Dance rampage
+  game.moveRows[80][5] = 0;
+  game.moveRows[315].writeUInt16BE(204, 0x1a); // Overheat -2 Sp. Atk
+  game.moveRows[315][5] = 100;
+  game.moves.set('vine whip', 22);
+  game.moves.set('low kick', 67);
+  game.moveRows[67].writeUInt16BE(196, 0x1a);  // Low Kick weight-based damage
+  game.moveRows[67][5] = 0;
+  const colosseum = {
+    ...data4.colosseum,
+    moves: {
+      'Leaf Storm': data4.colosseum.moves['Leaf Storm'],
+      'Grass Knot': data4.colosseum.moves['Grass Knot'],
+    },
+  };
+  const [grassKnot] = generations.newMoves(game, { ...data4, newMoves: [447, 447], colosseum });
+  const [leafStorm] = generations.newMoves(game, { ...data4, newMoves: [437, 437], colosseum });
+  assert.equal(grassKnot.as, 'Vine Whip');
+  assert.equal(grassKnot.row.readUInt16BE(0x1a), 196, 'Grass Knot keeps Low Kick weight-damage effect');
+  assert.equal(leafStorm.as, 'Petal Dance');
+  assert.equal(leafStorm.row.readUInt16BE(0x1a), 204, 'Leaf Storm keeps Overheat Sp. Atk drop effect');
+  assert.equal(leafStorm.row[5], 100, 'Leaf Storm keeps Overheat 100% effect chance');
 });

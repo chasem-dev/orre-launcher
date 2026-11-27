@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const tc = require('../src/trade-convert');
-const { tradeEvolution, summary } = require('../src/online-trades');
+const { tradeEvolution, summary, offerProblems } = require('../src/online-trades');
 
 const name = (b, at, text) => [...text].forEach((c, i) => b.writeUInt16BE(c.charCodeAt(0), at + 2 * i));
 
@@ -104,4 +104,17 @@ test('a trade evolution is foreseen as the game would see it: the item, an Evers
   assert.equal(tradeEvolution('xd', xdSwirlix), 713);
   const card = summary('colosseum', colosseum(), 'xd');
   assert.deepEqual([card.species, card.nickname, card.level, card.otName, card.otId, card.evolvesInto], [64, 'KADABRA', 30, 'LEO', 0x618b, 0]);
+});
+
+test('a Generation 5 or 6 Pokémon, move or held item can be offered: the other player\'s game says whether it takes it', () => {
+  const codes = (game, bytes) => offerProblems(game, bytes).map(p => p.code);
+  assert.deepEqual(codes('colosseum', colosseum({ species: 710 })), []);                        // Swirlix
+  assert.deepEqual(codes('colosseum', colosseum({ moves: [93, 588] })), []);                    // Moonblast
+  assert.deepEqual(codes('colosseum', colosseum({ moves: [93, 506] })), []);                    // a Gen 5 move
+  assert.deepEqual(codes('colosseum', colosseum({ item: 0x28a })), []);                         // Assault Vest
+  const xdSwirlix = tc.convert('colosseum', colosseum({ species: 710 }), { ...anyReceiver('xd'), gen6Pokemon: true, gen6Moves: true, gen6Items: true }).bytes;
+  assert.deepEqual(codes('xd', xdSwirlix), []);
+  // what no game takes still can't be offered
+  assert.deepEqual(codes('colosseum', colosseum({ species: 260 })), ['pack']);
+  assert.deepEqual(codes('colosseum', colosseum({ species: 64, shadow: 5, heart: 1000 })), ['shadow']);
 });

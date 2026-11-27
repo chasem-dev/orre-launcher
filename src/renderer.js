@@ -1208,7 +1208,7 @@ function refresh(data) {
 
 // The settings that are a list or a range, and the ones that are a switch: each saves under its element's id.
 const SELECTS = ['difficultyLevels', 'difficultyLevelsFrom', 'difficultyTeam', 'difficultyShadows', 'buttonPrompts', 'promptPad', 'battleRules', 'widescreen', 'resolution', 'frameRate', 'vsync', 'fullscreenMode', 'exclusiveResolution', 'display', 'msaa', 'anisotropic', 'sharpen', 'brightness', 'aspect', 'presentFilter', 'fsrMode', 'textureLoading', 'renderer', 'hdText', 'expAllShare', 'shinyOdds', 'language', 'battleSpeed', 'fastForward', 'fastForwardSpeed', 'coopHero', 'coopSplit', 'coopPads', 'padMode', 'updateChannel', 'randomizerSeed'];
-const SWITCHES = ['difficultyEvolve', 'randomizer', 'randomizerStarters', 'randomizerShadow', 'randomizerTrainers', 'randomizerGifts', 'randomizerGen1', 'randomizerGen2', 'randomizerGen3', 'randomizerGen4', 'randomizerGen5', 'randomizerGen6', 'randomizerPacks', 'randomizerSimilar', 'randomizerNoLegendaries', 'randomizerNoRepeats', 'randomizerBaseForms', 'generation4Pokemon', 'generation6Pokemon', 'fairyType', 'pbrReplaceAll', 'fullscreen', 'hudEdges', 'skipMovies', 'skipBattleAnimations', 'quickMoves', 'quickStatus', 'shinyShadow', 'shinyStarters', 'chooseHero', 'chooseStarters', 'tmNames', 'infiniteTms', 'expAll', 'cstickMove', 'partnerPass', 'battleLighting', 'moveRelearner', 'coop', 'pokeSpotPool', 'overlay', 'backgroundInput', 'gbaAutoPower', 'gbaTradeAnytime', 'fxaa', 'textures', 'hdModels', 'shaderWarmup', 'autoUpdate', 'autoBackups', 'shareUsage', 'discordPresence', 'darkMode'];
+const SWITCHES = ['difficultyEvolve', 'randomizer', 'randomizerStarters', 'randomizerShadow', 'randomizerTrainers', 'randomizerGifts', 'randomizerGen1', 'randomizerGen2', 'randomizerGen3', 'randomizerGen4', 'randomizerGen5', 'randomizerGen6', 'randomizerPacks', 'randomizerSimilar', 'randomizerNoLegendaries', 'randomizerNoRepeats', 'randomizerBaseForms', 'generation4Pokemon', 'generation6Pokemon', 'fairyType', 'pbrReplaceAll', 'fullscreen', 'hudEdges', 'skipMovies', 'skipBattleAnimations', 'quickMoves', 'quickStatus', 'shinyShadow', 'shinyStarters', 'chooseHero', 'chooseStarters', 'tmNames', 'infiniteTms', 'expAll', 'cstickMove', 'partnerPass', 'battleLighting', 'shadowAura', 'moveRelearner', 'coop', 'pokeSpotPool', 'overlay', 'backgroundInput', 'gbaAutoPower', 'gbaTradeAnytime', 'fxaa', 'textures', 'hdModels', 'shaderWarmup', 'autoUpdate', 'autoBackups', 'shareUsage', 'discordPresence', 'darkMode'];
 
 // The languages: English, the launcher's packs and any found in the languages folder. One chosen and then
 // removed from the folder stays listed, as the game plays in English without it; so does one this game has no pack
@@ -1809,12 +1809,15 @@ function offerUsumModels() {
   $('usum-offer').showModal();
 }
 
-// What the randomizer will do, and what the save on the card already is: the save wins.
+// What the randomizer will do, and what the save on the card already is: the save wins until updated.
 function renderRandomizer(data) {
-  const { run, exists } = data.randomizerSave || {}, ready = data.randomizerReady !== false;
+  const { run, exists } = data.randomizerSave || {}, ready = data.randomizerReady !== false, apply = data.randomizerApply || null;
   $('randomizer-options').hidden = !data.config.settings.randomizer;
   $('randomizer-spoilers').hidden = !run;
   $('randomizer-spoilers').disabled = Boolean(data.active);
+  $('randomizer-apply').hidden = !apply;
+  $('randomizer-apply').disabled = Boolean(data.active);
+  if (apply) $('randomizer-apply').textContent = apply.revert ? 'Remove from save' : run ? 'Update current save' : 'Apply to current save';
   $('randomizer-reroll').disabled = Boolean(data.active);
   // The fourth, fifth and sixth generations' Pokémon are the randomizer's to choose only once they're added, by a game that knows them
   const settings = data.config.settings, gen4Pokemon = Boolean(settings.generation4Pokemon), gen4Game = data.randomizerGenerations !== false;
@@ -2413,6 +2416,33 @@ $('randomizer-reroll').addEventListener('click', async () => {
   } catch (error) { showError(error); }
 });
 $('randomizer-spoilers').addEventListener('click', () => window.colo.randomizerSpoilers().catch(showError));
+$('randomizer-apply').addEventListener('click', () => {
+  const apply = current?.randomizerApply;
+  if (!apply || current?.active) return;
+  const xd = chosenGame(current).id === 'xd', listName = xd ? 'Shadow Monitor' : 'Snag List';
+  $('randomizer-apply-title').textContent = apply.revert ? 'Remove randomizer from your save?' : 'Apply randomizer settings to your save?';
+  $('randomizer-apply-before').textContent = apply.from;
+  $('randomizer-apply-after').textContent = apply.to;
+  $('randomizer-apply-lead').textContent = apply.revert
+    ? `Pokémon you already have stay as they are, and Shadow Pokémon you already snagged keep their names in the ${listName}. Future battles, unmet Shadow Pokémon and unclaimed gifts will play as the normal game.`
+    : `Pokémon you already have stay as they are, and Shadow Pokémon you already snagged keep their names in the ${listName}. Future battles, unmet Shadow Pokémon and unclaimed gifts will use these settings.`;
+  $('randomizer-apply-go').textContent = apply.revert ? 'Remove from save' : 'Apply to save';
+  closeModal();
+  $('randomizer-apply-confirm').showModal();
+});
+$('randomizer-apply-go').addEventListener('click', async () => {
+  const button = $('randomizer-apply-go');
+  button.disabled = true;
+  try {
+    const updated = await window.colo.randomizerApplyToSave();
+    $('randomizer-apply-confirm').close();
+    refresh(updated);
+    setMessage(updated.randomizerApplied?.revert
+      ? 'Removed randomizer settings from your save. A backup was saved first.'
+      : 'Applied randomizer settings to your save. A backup was saved first.');
+  } catch (error) { showError(error); }
+  finally { button.disabled = false; }
+});
 for (const key of ['sharpen', 'brightness', 'battleSpeed', 'expAllShare']) $(key).addEventListener('input', renderRanges);
 for (const key of ['buttonPrompts', 'promptPad']) $(key).addEventListener('input', () => { renderPrompts(); renderDependents(); });
 for (const key of ['skipBattleAnimations', 'expAll', 'fullscreen', 'fullscreenMode', 'widescreen', 'presentFilter', 'textures', 'textureLoading', 'coop', 'difficultyLevels'])

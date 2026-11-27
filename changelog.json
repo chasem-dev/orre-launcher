@@ -1,6 +1,16 @@
 {
   "beta": {
     "launcher": [
+      "Apply randomizer settings to your active save: under Settings → Gameplay → Randomizer, you can now enable randomization on a normal save, update a randomized save's generations, seed or options (such as adding Gen 5 and 6 mid-run), or revert a randomized save back to normal without losing progress. Your save is backed up first, Pokémon you already have stay untouched, and already-snagged Shadow Pokémon keep their names in the Snag List and Shadow Monitor.",
+      "Fixed Online Trades refusing to offer a Generation 5 or 6 Pokémon, or one that knows a Generation 5, 6 or Fairy move or holds a Generation 5 or 6 item, saying the other player's game didn't have them turned on. The other player's launcher now says whether their game can take it.",
+      "Updated Generation 4, 5, 6 and Fairy move animations to match their move types while keeping their exact battle effects, including Charge Beam, Grass Knot, Power Gem, Leaf Storm, Dazzling Gleam, Energy Ball, Focus Blast, Flash Cannon, Draco Meteor, Dragon Pulse, Bug Buzz and more.",
+      "Battle Revolution HD textures now include 4x upscaled Generation 4 battle portraits (in both Colosseum and XD, normal and shiny) and Colosseum body sprites, so Generation 4 Pokémon look as sharp as the rest of the cast with HD textures on.",
+      "Fixed Victini showing a floating static fire aura above its head, and hid similar idle-off glow meshes on Tepig, Kyurem and Xerneas.",
+      "Aura Sphere now plays Mist Ball's energy sphere animation instead of Swift while still never missing.",
+      "Fixed 3DS models of Scraggy, Reuniclus, Chandelure, Malamar, Avalugg, Zygarde and other Generation 5 and 6 Pokémon showing missing faces, solid purple flame boxes, opaque jelly or ice shells, or white streaks over their bodies.",
+      "Fixed the Pokédex 3D viewer failing with an error when playing special attack animations on models with flame cores, such as Braixen and Delphox.",
+      "Fixed Lampent and Doublade evolving at a lower level than their previous forms: Lampent now evolves into Chandelure at level 50 and Doublade into Aegislash at level 45.",
+      "Ice Shard, Aqua Jet, Shadow Sneak, Bullet Punch and Vacuum Wave now play type-matching attack animations instead of Quick Attack while keeping their increased priority.",
       "WISHMAKER Jirachi: receive the Pokémon Colosseum Bonus Disc's Jirachi, made exactly as the disc makes it, from your own copy of the Bonus Disc or, if you don't have one, without it. Give it to your linked Ruby, Sapphire, FireRed, LeafGreen or Emerald save under Settings → Game Boy Advance (Receive Jirachi), or straight into your Colosseum save from the Pokémon tab's Import menu. One per save, and your save is backed up first.",
       "Fixed Ruby and Sapphire saves that have a Battle Tower record being read as Emerald, which showed Emerald's advice for linking.",
       "Fixed later generations, Gen 6 types and Battle Revolution models not reaching the game in Colosseum and XD when you had many of them on at once, such as Replace all models with Generation 4 and 6 Pokémon. If the game's Pokémon still come to more than the game can read, the launcher leaves out Replace all models and says so in the log, or tells you what to turn off, instead of starting the game without them.",
@@ -33,6 +43,18 @@
       "Choosing the Story party online with a Generation 5 or 6 Pokémon in it switches the room to X and Y battle rules, as one with a Generation 4 Pokémon switches to Diamond and Pearl rules."
     ],
     "game": [
+      "Storm Drain and Lightning Rod now follow generation-accurate redirection rules: Hidden Power is no longer redirected under Diamond and Pearl rules, while Electrify, Ion Deluge, Techno Blast drives and Pledge combos are redirected under X and Y rules.",
+      "Fixed textures and shadows randomly disappearing or glitching out during battles in Pokémon XD when using detailed Generation 4, 5 or 6 Pokémon models (such as Skiddo or Thundurus Therian).",
+      "Already-snagged Shadow Pokémon now lock their species in your save so updating or removing randomizer settings mid-run keeps their names in the Snag List and Shadow Monitor, and randomizer runs using only Generation 5 or 6 Pokémon now save properly on a New Game.",
+      "Fixed Generation 4, 5 and 6 ability descriptions on Colosseum's Pokémon Summary screen showing garbled apostrophes and overlapping the STATS heading.",
+      "Fixed Colosseum crashing at the end of a turn during Rain, Sandstorm or Hail under X and Y battle rules.",
+      "Fixed online co-op doors staying closed for the other player when opened, and stopped the joining player from disconnecting during long cutscenes or having a finished battle restart on rejoin.",
+      "Fixed online co-op battles going out of step on turn one when the two games rolled different enemy Pokémon.",
+      "Fixed the randomizer with No repeated families picking a gift Pokémon from the same family as a Shadow Pokémon or another gift, in both Colosseum and XD.",
+      "Fixed the Relic Stone quest in Agate Village in Pokémon XD softlocking if your first purified Shadow Pokémon came from Shadowtrade or Extra Shadows.",
+      "Fixed Flamethrower and other moving battle particles in Pokémon XD stopping short in front of the attacker at 60 fps and 120 fps.",
+      "Fixed saving anywhere in Colosseum in the middle of a story scene (such as Phenac City before rescuing Rui) locking the save on Continue; saves already stuck there now recover to the last PC so the scene can be replayed.",
+      "Improved wireless Nintendo Switch Pro Controller detection over Bluetooth on macOS.",
       "Fixed later generations, Gen 6 types and Battle Revolution models not loading when you had many of them on at once. If the launcher's Pokémon can't be read, the game now stops with a message instead of starting without them, which made saved Pokémon forget their later generations' moves.",
       "Gen 6 types: with the setting on, both games have the Fairy type, with generation 6's type chart, a Fairy type picture in each game's own style on every screen that shows types, and its new moves, Draining Kiss giving back three quarters of the damage. With it off again, a Pokémon that learned a Fairy move forgets it, leaving the slot empty, and the same for a Generation 4 move with Generation 4 off, so a save from either still loads.",
       "Generation 6 mechanics in Colosseum and XD: each of X and Y's battle changes plays when the launcher turns it on, with damage worked out as Pokémon Showdown does, Assault Vest, Eviolite, Rocky Helmet and Weakness Policy as held items, and a Pokémon's hidden ability in online battles.",
@@ -51,7 +73,13 @@
       "Trainers judge each Generation 4, 5 and 6 move by what it does, in both games: Light of Ruin as a strong attack instead of a healing move, Drill Run as an attack instead of a one-hit KO, Quiver Dance as a stat boost, Heal Pulse as a move they rarely use, while each move keeps its own animation.",
       "X and Y battles: the end of each turn goes effect by effect as it does in X and Y, in both games and online between them: Wish and Future Sight land first, then every Pokémon's Shed Skin, Hydration or Healer and its Leftovers or Black Sludge, then Leech Seed, then poison and burns, with Reflect, Light Screen and the like wearing off after those.",
       "X and Y battles: Infiltrator gets past Safeguard and Mist, Crafty Shield also stops a partner's status moves and ones Protect lets through, such as Transform, Mean Look and Block, Imposter copies the foe across from it in double battles, Payback isn't doubled against a Pokémon that just came in, Liquid Ooze hurts a Pokémon using Dream Eater, Rototiller doesn't fail while a Pokémon is in the air, Mold Breaker gets past Telepathy and the auras, Electro Ball goes by each Pokémon's Speed at the time, and Eviolite and Assault Vest work with Platinum's damage too.",
-      "Fixed the starter picker in XD leaving blank portraits on pages when later generations are enabled."
+      "Fixed the starter picker in XD leaving blank portraits on pages when later generations are enabled.",
+      "More Shadow Pokémon: the P★DA's Snag List (Shadow Monitor in XD) lists the story's Shadow Pokémon first and the extras after them, marked EXTRA in purple, and each one you met but didn't snag names its trainer, so you can tell which trainers still have a story Shadow Pokémon.",
+      "Fixed a snagged extra Shadow Pokémon showing another Pokémon's name in Colosseum's Snag List.",
+      "Illusion works: Zorua and Zoroark come out looking like the last Pokémon in your party, with its name, model and portrait, until a move's damage hits them and the illusion wears off.",
+      "Co-op battles say who chooses when a player has no Pokémon out, such as XD's first Shadow battle with only Eevee in the party: the other player chooses for it, and the battle carries on for both.",
+      "Remembering a move costs 100 Poké Coupons in both games: XD's Move Teacher in Mt. Battle's Pokémon Center charges 100 instead of 1,000, and Colosseum's Move Relearner (the Move Deleter in the same place) now charges 100 too, where it was free.",
+      "Shadow aura: a Shadow Pokémon keeps its black aura for the whole battle once Rui or the Snag Machine has spotted it, not only at that moment and in Hyper Mode, in Colosseum and XD. It's on by default; turn it off under Gameplay."
     ]
   },
   "releases": [

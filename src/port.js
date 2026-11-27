@@ -231,6 +231,9 @@ function normalizeSettings(input = {}, platform = process.platform, arch = gameA
     // In battle, the lights behind the Pokémon come from the front and all are 15% brighter (host/battlelight.c). On
     // unless turned off.
     battleLighting: input.battleLighting !== false,
+    // A Shadow Pokémon's black aura stays on it all battle once you know it's one (host/shadowaura.c), in both games. On
+    // unless turned off.
+    shadowAura: input.shadowAura !== false,
     // XD: a Poké Spot draws from every Pokémon a player could find in the wild, not only its own three. Off unless chosen.
     pokeSpotPool: input.pokeSpotPool !== false,
     // A New Game asks who to play as (Wes, or a Game Boy Advance hero Mt. Battle shows) before the name, and the save
@@ -432,6 +435,7 @@ const FEATURE_ENVIRONMENT = {
   cstickMove: ['COLO_CSTICK_MOVE'],
   partnerPass: ['COLO_PARTNER_PASS'],
   battleLighting: ['COLO_BATTLE_LIGHT'],
+  shadowAura: ['COLO_SHADOW_AURA'],
   pokeSpots: ['COLO_POKESPOT_POOL'],
   coop: ['COLO_COOP', 'COLO_COOP_HERO', 'COLO_COOP_SPLIT', 'COLO_COOP_PADS'],
   playAs: ['COLO_CHOOSE_HERO', 'COLO_PLAYER'],
@@ -507,6 +511,8 @@ function buildEnvironment(settings, disc, root, { customTextures = null, pbrText
   // Unset is on in the game: the Trade Center opens before the story's end.
   if (settings.gbaTradeAnytime === false) env.COLO_GBA_TRADE_ANYTIME = '0';
   if (settings.battleLighting === false) env.COLO_BATTLE_LIGHT = '0';
+  // Unset is on in the game.
+  if (settings.shadowAura === false) env.COLO_SHADOW_AURA = '0';
   if (settings.pokeSpotPool === false) env.COLO_POKESPOT_POOL = '0';
   if (settings.chooseHero === false) env.COLO_CHOOSE_HERO = '0';
   env.COLO_COOP = settings.coop === false ? '0' : '1';

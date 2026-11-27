@@ -10,7 +10,7 @@ const path = require('node:path');
 const FEATURES = ['online', 'generations', 'randomizer', 'widescreen', 'hdText', 'hdModels', 'hdTextures', 'languagePacks',
   'discordPresence', 'storyParty', 'pcBoxes', 'gbaLink', 'quickMoves', 'battleSpeed', 'fastForward', 'skipMovies', 'starters',
   'shiny', 'shinyStarters', 'pokemonPacks', 'pbrAssets', 'pokedex', 'jukebox', 'teamBuilder', 'gciSaves', 'tmNames', 'playAs', 'customize',
-  'partnerPass', 'moveRelearner', 'pokeSpots', 'infiniteTms', 'expAll', 'cstickMove', 'coop', 'shinyOdds', 'difficulty', 'battleLighting'];
+  'partnerPass', 'moveRelearner', 'pokeSpots', 'infiniteTms', 'expAll', 'cstickMove', 'coop', 'shinyOdds', 'difficulty', 'battleLighting', 'shadowAura'];
 
 const GAMES = {
   colosseum: {
@@ -66,7 +66,7 @@ const GAMES = {
     // Difficulty is host/randomizer.c's, on the story deck's trainers (series-xd/460 gives the deck room for more).
     features: ['online', 'teamBuilder', 'generations', 'widescreen', 'hdText', 'hdTextures', 'fastForward', 'skipMovies', 'gciSaves', 'discordPresence', 'battleLighting',
       'battleSpeed', 'quickMoves', 'shiny', 'starters', 'pokemonPacks', 'pbrAssets', 'gbaLink', 'randomizer', 'storyParty', 'pokedex', 'jukebox', 'tmNames', 'playAs', 'customize',
-      'languagePacks', 'pokeSpots', 'infiniteTms', 'expAll', 'coop', 'shinyOdds', 'difficulty']
+      'languagePacks', 'pokeSpots', 'infiniteTms', 'expAll', 'coop', 'shinyOdds', 'difficulty', 'shadowAura']
   }
 };
 
