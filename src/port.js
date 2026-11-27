@@ -778,6 +778,21 @@ function usumModelsCommand(rom, work, numbers, platform = process.platform, envi
   return { command: path.join(msys, 'mingw64', 'bin', 'python.exe'), args, cwd: path.dirname(args[0]), env: msysEnvironment(msys, environment) };
 }
 
+// The bag's and shops' item pictures (the port's host/itemsprites.c, COLO_ITEM_SPRITES), from the same 3DS ROM:
+// scripts/3ds2pkx/item_icons.py writes them to `out`, item-icons-version.txt last, which says they're made.
+const ITEM_ICONS_VERSION = 1;   // item_icons.py VERSION: they're made again when it changes
+function itemIconsScript() { return launcherScript(path.join('3ds2pkx', 'item_icons.py')); }
+function itemIconsReady(out) {
+  try { return parseInt(fs.readFileSync(path.join(out, 'item-icons-version.txt'), 'utf8'), 10) === ITEM_ICONS_VERSION; }
+  catch { return false; }
+}
+function itemIconsCommand(rom, out, platform = process.platform, environment = process.env) {
+  const args = [itemIconsScript(), rom, out];
+  if (platform !== 'win32') return { command: 'python3', args, cwd: path.dirname(args[0]), env: environment };
+  const { msys } = msysBash(environment);
+  return { command: path.join(msys, 'mingw64', 'bin', 'python.exe'), args, cwd: path.dirname(args[0]), env: msysEnvironment(msys, environment) };
+}
+
 // The system's libdrm_amdgpu, for the game to load before anything else on Linux. The game's graphics
 // drivers are the system's, and a newer Mesa needs this library from the same system: RADV 26.2 on a
 // Steam Deck calls amdgpu_va_manager_query_sw_info, which the build tools' older copy (2.4.129) lacks.
@@ -843,4 +858,4 @@ module.exports = { PORT_URL, TEXTURE_PACK, PBR_TEXTURE_PACK, USUM_TEXTURE_PACK, 
   pbrTextureDirectory, pbrTexturesInstalled, pbrTextureFolder, dropLeftOutPbrTextures, pbrTextureCommand,
   buildEnvironment, binaryPath, longPathProblem, pathCharacterProblem, nonAsciiPathProblem, playableInstall, useLauncherScripts, launcherScript,
   gameBuildEnvironment, buildCommand, buildJobs, textureCommand, pbrModelsScript, pbrModelsCommand, pbrOutdated, pbrMakesCries, playsOwnModels, playsPackCries, packsFileLimit,
-  usumModelsScript, usumModelsCommand, usumOutdated, gameRunCommand, gameRuntimeFolders, systemLibdrmAmdgpu };
+  usumModelsScript, usumModelsCommand, usumOutdated, itemIconsScript, itemIconsReady, itemIconsCommand, gameRunCommand, gameRuntimeFolders, systemLibdrmAmdgpu };
