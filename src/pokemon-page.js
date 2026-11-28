@@ -1146,6 +1146,7 @@ function importStatus(text) {
 }
 
 function renderImportMenu() {
+  $('import-jirachi').hidden = importView?.game !== 'colosseum';
   const problem = importView?.problems?.ds;
   $('import-ds').disabled = Boolean(problem);
   $('import-ds-detail').textContent = problem || 'Diamond, Pearl, Platinum · .sav, .srm or .dsv';
@@ -1284,6 +1285,16 @@ $('import-gba').addEventListener('click', () => openImport('gba'));
 $('import-ds').addEventListener('click', () => openImport('ds'));
 $('import-bw').addEventListener('click', () => openImport('bw'));
 $('import-3ds').addEventListener('click', () => openImport('3ds'));
+// WISHMAKER Jirachi, made from the player's Bonus Disc, straight into the Colosseum save (main.js)
+$('import-jirachi').addEventListener('click', async () => {
+  $('import-menu').hidePopover();
+  setStatus('');
+  try {
+    const result = await window.colo.receiveJirachiColosseum();
+    if (result?.message) setStatus(result.message);
+    refresh();
+  } catch (error) { setStatus(message(error)); }
+});
 $('save-import-tab-party').addEventListener('click', () => { importTab = 'party'; renderImport(); });
 $('save-import-tab-boxes').addEventListener('click', () => { importTab = 'boxes'; renderImport(); });
 $('save-import-box').addEventListener('change', event => { importBox = Number(event.target.value); renderImport(); });

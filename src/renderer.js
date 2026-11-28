@@ -132,6 +132,7 @@ async function gbaAction(call) {
   try {
     const result = await call();
     if (result && result.config) refresh(result);
+    if (result && result.message) setMessage(result.message);
   } catch (error) { showError(error); }
 }
 function gbaNote(id, item) {
@@ -169,6 +170,8 @@ function gbaSaveRow(socket, entry) {
   const problem = save?.error || save?.problem || '';
   if (problem) text.append(gbaElement('span', `small-path gba-note${save.error ? ' rom-error' : ''}`, problem));
   const actions = gbaElement('div', 'actions');
+  // the Bonus Disc's gift, into a save the launcher can read (WISHMAKER Jirachi: src/wishmaker.js)
+  if (save && !save.error) gbaButton(actions, 'Receive Jirachi', () => window.colo.receiveJirachi(socket));
   if (save) gbaButton(actions, 'Remove', () => window.colo.clearGbaFile('save', socket));
   gbaButton(actions, save ? 'Change save' : 'Choose save', () => window.colo.chooseGbaFile('save', socket));
   row.append(text, actions);
